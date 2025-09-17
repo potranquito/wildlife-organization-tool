@@ -21,8 +21,15 @@ import {
 import type { UIMessage } from "ai";
 
 export default function Home() {
-  const [messages, setMessages] = useState<UIMessage[]>([]);
+  const [messages, setMessages] = useState<UIMessage[]>([
+    {
+      id: "welcome",
+      role: "assistant",
+      content: "📍 **Where are you located?** \nPlease tell me your city and state (e.g., \"Las Vegas\" or \"Denver, Colorado\")."
+    }
+  ]);
   const [isLoading, setIsLoading] = useState(false);
+  const [sessionId] = useState(() => Math.random().toString(36).substring(7));
 
   const handleSubmit = async (
     message: { text?: string; files?: any[] },
@@ -42,7 +49,7 @@ export default function Home() {
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: message.text }),
+        body: JSON.stringify({ message: message.text, sessionId }),
       });
 
       const data = await response.json();
@@ -76,7 +83,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background flex flex-col max-w-4xl mx-auto">
       <div className="border-b p-4">
-        <h1 className="text-xl font-semibold">AI Chat Assistant</h1>
+        <h1 className="text-xl font-semibold">Wildlife Finder</h1>
       </div>
 
       <Conversation className="flex-1">
