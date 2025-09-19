@@ -42,7 +42,6 @@ Write a poem about the ${animal} following the same style, structure, and educat
       model: openai('gpt-4o'),
       prompt: prompt,
       temperature: 0.7,
-      maxTokens: 300,
     });
 
     const poemResponse = result.text.trim();
@@ -56,7 +55,7 @@ Write a poem about the ${animal} following the same style, structure, and educat
     // Fallback: Return a random poem from our RAG database
     try {
       const fallbackPoem = getRandomPoem();
-      const response = `🐾 **A Poem About the ${animal}**\n\n${fallbackPoem.poem}`;
+      const response = `🐾 **A Poem About the ${fallbackPoem.animal}**\n\n${fallbackPoem.poem}`;
       return NextResponse.json({ response });
     } catch (fallbackError) {
       console.error('Fallback poem error:', fallbackError);
