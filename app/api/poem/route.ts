@@ -52,9 +52,18 @@ Write a poem about the ${animal} following the same style, structure, and educat
 
   } catch (error) {
     console.error('Poetry API error:', error);
-    return NextResponse.json(
-      { error: 'Failed to generate poem' },
-      { status: 500 }
-    );
+    
+    // Fallback: Return a random poem from our RAG database
+    try {
+      const fallbackPoem = getRandomPoem();
+      const response = `🐾 **A Poem About the ${animal}**\n\n${fallbackPoem.poem}`;
+      return NextResponse.json({ response });
+    } catch (fallbackError) {
+      console.error('Fallback poem error:', fallbackError);
+      return NextResponse.json(
+        { error: 'Failed to generate poem' },
+        { status: 500 }
+      );
+    }
   }
 }
