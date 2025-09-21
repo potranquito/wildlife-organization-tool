@@ -168,8 +168,7 @@ Focus on:
 
 Search the web for real species based on current biodiversity databases like IUCN, iNaturalist, and GBIF.`
             }
-          ],
-          temperature: 0.3
+          ]
         });
 
         const resultText = result.choices[0]?.message?.content || '';
@@ -1002,8 +1001,7 @@ Focus on:
 
 Search the web for real organizations with actual websites that are currently active. Return 3-5 organizations.`
               }
-            ],
-            temperature: 0.2
+            ]
           });
 
           const searchResultText = searchResult.choices[0]?.message?.content || '';
