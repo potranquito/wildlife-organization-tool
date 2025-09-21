@@ -177,16 +177,9 @@ Provide real species that exist in this location based on current biodiversity d
   } catch (error) {
     console.error('Dynamic species lookup error:', error);
 
-    // Fallback: return predefined species for common locations
-    const fallbackSpecies = getFallbackSpeciesForLocation(location);
-    if (fallbackSpecies.length > 0) {
-      const locationName = location.city || location.state || location.country || 'this location';
-      console.log(`Using fallback species data for ${locationName}`);
-      return fallbackSpecies;
-    }
-
-    // Last resort: return empty array, let system show appropriate message
-    return [];
+    // Use enhanced AI-powered search with multiple strategies
+    console.log('Primary wildlife search failed, trying enhanced multi-tier approach');
+    return await enhancedWildlifeSearch(location);
   }
 }
 
@@ -284,91 +277,243 @@ function removeDuplicateSpecies(species: Species[]): Species[] {
   return Array.from(uniqueSpeciesMap.values());
 }
 
-function getFallbackSpeciesForLocation(location: Location): Species[] {
-  const locationName = location.displayName.toLowerCase();
-  const city = location.city?.toLowerCase() || '';
-  const state = location.state?.toLowerCase() || '';
-  const country = location.country?.toLowerCase() || '';
+// Enhanced multi-tier wildlife search system
+async function enhancedWildlifeSearch(location: Location): Promise<Species[]> {
+  const { openai } = await import('@ai-sdk/openai');
+  const { generateText } = await import('ai');
 
-  // Miami/South Florida fallback
-  if (city.includes('miami') || locationName.includes('miami') ||
-      locationName.includes('south florida') || locationName.includes('florida keys')) {
-    return [
-      { id: 'miami-1', commonName: 'West Indian Manatee', scientificName: 'Trichechus manatus', conservationStatus: 'Vulnerable', source: 'Fallback' },
-      { id: 'miami-2', commonName: 'American Alligator', scientificName: 'Alligator mississippiensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'miami-3', commonName: 'Green Sea Turtle', scientificName: 'Chelonia mydas', conservationStatus: 'Endangered', source: 'Fallback' },
-      { id: 'miami-4', commonName: 'Roseate Spoonbill', scientificName: 'Platalea ajaja', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'miami-5', commonName: 'Florida Panther', scientificName: 'Puma concolor coryi', conservationStatus: 'Endangered', source: 'Fallback' },
-      { id: 'miami-6', commonName: 'Great Egret', scientificName: 'Ardea alba', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'miami-7', commonName: 'Eastern Coral Snake', scientificName: 'Micrurus fulvius', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'miami-8', commonName: 'Green Anole', scientificName: 'Anolis carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' }
+  const locationName = location.city || location.state || location.country || 'this location';
+  console.log(`Using enhanced wildlife search for ${locationName}`);
+
+  // Tier 1: Web Search Simulation (primary approach)
+  try {
+    console.log(`Tier 1: Attempting web search simulation for ${locationName}`);
+
+    const searchQueries = [
+      `wildlife animals found in ${locationName} native species`,
+      `birds mammals reptiles amphibians ${locationName} local wildlife`,
+      `endangered species ${locationName} conservation status`
     ];
+
+    let allSpecies: Species[] = [];
+
+    for (const query of searchQueries) {
+      try {
+        const result = await generateText({
+          model: openai('gpt-4o'),
+          system: `You are a wildlife research expert with access to current biodiversity databases. Provide accurate, real-time information about wildlife species found in specific locations.`,
+          prompt: `Search for wildlife species in: "${query}"
+
+Find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) that are currently found in ${locationName}. For each species, provide:
+
+Format:
+1. Common Name
+Scientific Name: [Scientific name]
+Conservation Status: [Status if known, otherwise "Data Deficient"]
+Type: [mammal/bird/reptile/amphibian]
+
+2. Common Name
+Scientific Name: [Scientific name]
+Conservation Status: [Status if known, otherwise "Data Deficient"]
+Type: [mammal/bird/reptile/amphibian]
+
+Focus on:
+- Species actually found in the geographic area of ${locationName}
+- Mix of common and notable species
+- Include conservation status when known
+- Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
+
+Provide real species that exist in this location based on current biodiversity data.`
+        });
+
+        const speciesFromSearch = parseWildlifeSearchResults(result.text, location);
+        allSpecies = [...allSpecies, ...speciesFromSearch];
+
+      } catch (searchError) {
+        console.log(`Web search query failed: ${searchError}`);
+        continue;
+      }
+    }
+
+    // Remove duplicates and limit results
+    const uniqueSpecies = removeDuplicateSpecies(allSpecies);
+    if (uniqueSpecies.length >= 3) {
+      console.log(`Tier 1 web search simulation successful: ${uniqueSpecies.length} species found`);
+      return uniqueSpecies.slice(0, 8);
+    } else {
+      console.log(`Tier 1 web search simulation insufficient results (${uniqueSpecies.length} species), trying Tier 2`);
+    }
+  } catch (error) {
+    console.log('Tier 1 web search simulation failed, trying Tier 2');
   }
 
-  // New York/NYC fallback
-  if (city.includes('new york') || locationName.includes('new york') ||
-      city.includes('nyc') || locationName.includes('manhattan')) {
-    return [
-      { id: 'nyc-1', commonName: 'Eastern Gray Squirrel', scientificName: 'Sciurus carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-2', commonName: 'Red-tailed Hawk', scientificName: 'Buteo jamaicensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-3', commonName: 'Northern Cardinal', scientificName: 'Cardinalis cardinalis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-4', commonName: 'White-tailed Deer', scientificName: 'Odocoileus virginianus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-5', commonName: 'American Robin', scientificName: 'Turdus migratorius', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-6', commonName: 'Eastern Box Turtle', scientificName: 'Terrapene carolina', conservationStatus: 'Vulnerable', source: 'Fallback' },
-      { id: 'nyc-7', commonName: 'American Bullfrog', scientificName: 'Lithobates catesbeianus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'nyc-8', commonName: 'Red Fox', scientificName: 'Vulpes vulpes', conservationStatus: 'Least Concern', source: 'Fallback' }
-    ];
+  // Tier 2: Ecosystem-based knowledge search
+  try {
+    const ecosystemResult = await generateText({
+      model: openai('gpt-4o'),
+      system: `You are a biogeography expert. Provide wildlife species data in valid JSON format only.`,
+      prompt: `Identify wildlife species for location: ${locationName} (coordinates: ${location.lat}, ${location.lon})
+
+First identify the main ecosystems/biomes present at this location, then find 8-10 diverse wildlife species from those ecosystems.
+
+Respond with ONLY this JSON structure:
+{
+  "species": [
+    {
+      "commonName": "Species Name",
+      "scientificName": "Genus species",
+      "conservationStatus": "Status",
+      "habitat": "Brief habitat description",
+      "type": "mammal/bird/reptile/amphibian/fish/insect"
+    }
+  ]
+}
+
+Include diverse species (mammals, birds, reptiles, amphibians) actually found in this geographic region.`,
+      temperature: 0.3
+    });
+
+    const parsed = JSON.parse(ecosystemResult.text);
+    if (parsed.species && Array.isArray(parsed.species) && parsed.species.length > 0) {
+      return parseEnhancedSpeciesData(parsed.species, location);
+    }
+  } catch (error) {
+    console.log('Tier 2 ecosystem search failed, trying Tier 3');
   }
 
-  // Los Angeles/California fallback
-  if (city.includes('los angeles') || city.includes('la') ||
-      locationName.includes('los angeles') ||
-      (state.includes('california') && (city.includes('angeles') || city.includes('hollywood')))) {
-    return [
-      { id: 'la-1', commonName: 'California Condor', scientificName: 'Gymnogyps californianus', conservationStatus: 'Critically Endangered', source: 'Fallback' },
-      { id: 'la-2', commonName: 'Mountain Lion', scientificName: 'Puma concolor', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'la-3', commonName: 'Desert Tortoise', scientificName: 'Gopherus agassizii', conservationStatus: 'Vulnerable', source: 'Fallback' },
-      { id: 'la-4', commonName: 'California Sea Lion', scientificName: 'Zalophus californianus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'la-5', commonName: 'Western Bluebird', scientificName: 'Sialia mexicana', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'la-6', commonName: 'California Newt', scientificName: 'Taricha torosa', conservationStatus: 'Near Threatened', source: 'Fallback' },
-      { id: 'la-7', commonName: 'Pacific Gopher Snake', scientificName: 'Pituophis catenifer catenifer', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'la-8', commonName: 'Island Fox', scientificName: 'Urocyon littoralis', conservationStatus: 'Near Threatened', source: 'Fallback' }
-    ];
+  // Tier 3: Biogeographic region search
+  try {
+    const regionResult = await generateText({
+      model: openai('gpt-4o'),
+      system: `You are a wildlife expert. Return valid JSON only.`,
+      prompt: `Find wildlife species for ${locationName} using biogeographic region knowledge.
+
+Respond with ONLY this JSON:
+{
+  "species": [
+    {
+      "commonName": "Species Name",
+      "scientificName": "Genus species",
+      "conservationStatus": "Least Concern/Near Threatened/Vulnerable/Endangered/Critically Endangered/Data Deficient",
+      "habitat": "Where they live",
+      "type": "mammal/bird/reptile/amphibian/fish"
+    }
+  ]
+}
+
+Find 8 species from different animal groups native to this region.`,
+      temperature: 0.4
+    });
+
+    const parsed = JSON.parse(regionResult.text);
+    if (parsed.species && Array.isArray(parsed.species) && parsed.species.length > 0) {
+      return parseEnhancedSpeciesData(parsed.species, location);
+    }
+  } catch (error) {
+    console.log('Tier 3 region search failed, trying Tier 4');
   }
 
-  // Seattle/Pacific Northwest fallback
-  if (city.includes('seattle') || locationName.includes('seattle') ||
-      locationName.includes('pacific northwest') ||
-      (state.includes('washington') && city.includes('seattle'))) {
-    return [
-      { id: 'seattle-1', commonName: 'Black-tailed Deer', scientificName: 'Odocoileus hemionus columbianus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-2', commonName: 'American Beaver', scientificName: 'Castor canadensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-3', commonName: 'Bald Eagle', scientificName: 'Haliaeetus leucocephalus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-4', commonName: 'Great Blue Heron', scientificName: 'Ardea herodias', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-5', commonName: 'Pacific Tree Frog', scientificName: 'Pseudacris regilla', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-6', commonName: 'Northwestern Garter Snake', scientificName: 'Thamnophis ordinoides', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-7', commonName: 'Townsend\'s Mole', scientificName: 'Scapanus townsendii', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'seattle-8', commonName: 'Barred Owl', scientificName: 'Strix varia', conservationStatus: 'Least Concern', source: 'Fallback' }
-    ];
+  // Tier 4: Habitat-based search
+  try {
+    const country = location.country || 'this country';
+    const habitatResult = await generateText({
+      model: openai('gpt-4o'),
+      system: `Wildlife database expert. JSON responses only.`,
+      prompt: `Wildlife species found in various habitats near ${locationName}, ${country}.
+
+JSON format only:
+{
+  "species": [
+    {
+      "commonName": "Common Name",
+      "scientificName": "Scientific name",
+      "conservationStatus": "Conservation status",
+      "habitat": "Primary habitat",
+      "type": "animal type"
+    }
+  ]
+}
+
+Include species from: urban areas, forests, wetlands, grasslands common to this region. Return 6-8 species.`,
+      temperature: 0.5
+    });
+
+    const parsed = JSON.parse(habitatResult.text);
+    if (parsed.species && Array.isArray(parsed.species) && parsed.species.length > 0) {
+      return parseEnhancedSpeciesData(parsed.species, location);
+    }
+  } catch (error) {
+    console.log('Tier 4 habitat search failed, using Tier 5');
   }
 
-  // Toronto/Canada fallback
-  if (city.includes('toronto') || locationName.includes('toronto') ||
-      (country.includes('canada') && city.includes('toronto'))) {
-    return [
-      { id: 'toronto-1', commonName: 'Eastern Gray Squirrel', scientificName: 'Sciurus carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-2', commonName: 'Red-tailed Hawk', scientificName: 'Buteo jamaicensis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-3', commonName: 'Northern Cardinal', scientificName: 'Cardinalis cardinalis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-4', commonName: 'American Toad', scientificName: 'Anaxyrus americanus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-5', commonName: 'Common Raccoon', scientificName: 'Procyon lotor', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-6', commonName: 'Eastern Garter Snake', scientificName: 'Thamnophis sirtalis', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-7', commonName: 'Black-capped Chickadee', scientificName: 'Poecile atricapillus', conservationStatus: 'Least Concern', source: 'Fallback' },
-      { id: 'toronto-8', commonName: 'White-tailed Deer', scientificName: 'Odocoileus virginianus', conservationStatus: 'Least Concern', source: 'Fallback' }
-    ];
+  // Tier 5: Broad geographic search (last resort)
+  try {
+    const country = location.country || 'North America';
+    const broadResult = await generateText({
+      model: openai('gpt-4o'),
+      system: `Basic wildlife expert. Return JSON.`,
+      prompt: `Common wildlife species in ${country}:
+
+{
+  "species": [
+    {
+      "commonName": "Name",
+      "scientificName": "Scientific name",
+      "conservationStatus": "Least Concern",
+      "habitat": "General habitat",
+      "type": "bird/mammal/reptile"
+    }
+  ]
+}
+
+6 common species only.`,
+      temperature: 0.2
+    });
+
+    const parsed = JSON.parse(broadResult.text);
+    if (parsed.species && Array.isArray(parsed.species)) {
+      return parseEnhancedSpeciesData(parsed.species, location);
+    }
+  } catch (error) {
+    console.error('All 5 wildlife search tiers failed:', error);
   }
 
-  // No fallback data available
-  return [];
+  // Absolute fallback - return generic species
+  return [{
+    id: 'generic-1',
+    commonName: 'Local Wildlife',
+    scientificName: 'Contact local wildlife agencies',
+    conservationStatus: 'Data Deficient',
+    habitat: 'Various habitats',
+    source: 'Generic'
+  }];
+}
+
+function parseEnhancedSpeciesData(speciesData: any[], location: Location): Species[] {
+  const species: Species[] = [];
+
+  for (let i = 0; i < Math.min(speciesData.length, 8); i++) {
+    const item = speciesData[i];
+    if (item.commonName && item.scientificName) {
+      species.push({
+        id: `enhanced-${i}-${location.displayName}`,
+        commonName: item.commonName.trim(),
+        scientificName: item.scientificName.trim(),
+        conservationStatus: item.conservationStatus?.trim() || 'Data Deficient',
+        habitat: item.habitat?.trim() || '',
+        source: 'Enhanced AI Search'
+      });
+    }
+  }
+
+  return species.length > 0 ? species : [{
+    id: 'default-1',
+    commonName: 'Local Wildlife',
+    scientificName: 'Contact wildlife agencies',
+    conservationStatus: 'Data Deficient',
+    habitat: 'Local habitats',
+    source: 'Default'
+  }];
 }
 
 async function enhanceWithIUCNStatus(species: Species[]): Promise<Species[]> {
