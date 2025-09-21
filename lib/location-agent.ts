@@ -1,5 +1,3 @@
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
 import { geocodeLocation, type Location } from './conservation-tools';
 
 // Enhanced location parsing result
@@ -324,6 +322,10 @@ export class LocationAgent {
     }
 
     try {
+      // Import OpenAI and generateText dynamically
+      const { openai } = await import('@ai-sdk/openai');
+      const { generateText } = await import('ai');
+
       const result = await generateText({
         model: openai('gpt-4o'),
         system: `You are a location disambiguation expert. Determine if a location name is ambiguous and needs clarification.`,

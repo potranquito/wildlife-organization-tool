@@ -118,9 +118,8 @@ export default function Home() {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
-    // Ensure minimum loading time for animation
+    // Track start time for potential use
     const startTime = Date.now();
-    const minLoadingTime = CONFIG.timing.minLoadingTime;
 
     try {
       const response = await fetch("/api/chat", {
@@ -138,14 +137,7 @@ export default function Home() {
         throw new Error("Server returned invalid response");
       }
 
-      // Calculate remaining time to reach minimum loading duration
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
-
-      // Wait for remaining time if needed
-      if (remainingTime > 0) {
-        await new Promise(resolve => setTimeout(resolve, remainingTime));
-      }
+      // No artificial delay - show response immediately when ready
 
       if (response.ok) {
         const assistantMessage: UIMessage = {
@@ -185,13 +177,7 @@ export default function Home() {
     } catch (error) {
       console.error("Error:", error);
 
-      // Still respect minimum loading time even for errors
-      const elapsedTime = Date.now() - startTime;
-      const remainingTime = Math.max(0, minLoadingTime - elapsedTime);
-
-      if (remainingTime > 0) {
-        await new Promise(resolve => setTimeout(resolve, remainingTime));
-      }
+      // Show error immediately without artificial delay
 
       const errorMessage: UIMessage = {
         id: (Date.now() + 1).toString(),

@@ -1328,7 +1328,7 @@ async function getGovernmentConservationOrgs(location: Location): Promise<Organi
     const { generateText } = await import('ai');
 
     const result = await generateText({
-      model: openaiClient('gpt-4o'),
+      model: openai('gpt-4o'),
       system: `You are an expert on government wildlife agencies and environmental departments worldwide. Provide accurate, current information about official government organizations responsible for wildlife conservation.`,
       prompt: `Find the official government wildlife and environmental agencies for ${locationName}. Include:
 

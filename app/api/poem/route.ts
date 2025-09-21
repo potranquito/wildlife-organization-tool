@@ -1,5 +1,3 @@
-import { openai } from '@ai-sdk/openai';
-import { generateText } from 'ai';
 import { NextRequest, NextResponse } from 'next/server';
 import { WILDLIFE_POETRY_AGENT_PROMPT } from '@/lib/agent-prompts';
 import { findPoemByAnimal, getRandomPoem } from '@/lib/animal-poems-rag';
@@ -45,6 +43,10 @@ ${randomExample.poem}
 
 **Your Task:**
 Write a poem about the ${animal} following the same style, structure, and educational approach as the example above. Focus on interesting facts about the ${animal} that might surprise readers.`;
+
+    // Import OpenAI and generateText dynamically
+    const { openai } = await import('@ai-sdk/openai');
+    const { generateText } = await import('ai');
 
     const result = await generateText({
       model: openai('gpt-4o'),
