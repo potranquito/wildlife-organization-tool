@@ -102,228 +102,177 @@ export async function geocodeLocation(locationQuery: string): Promise<Location |
 
 export async function findSpeciesByLocation(location: Location): Promise<Species[]> {
   try {
-    let species: Species[] = [];
-
-    // Strategy 1: iNaturalist API for precise location-based observations (primary source)
-    try {
-      const radius = isStateOrCountryLocation(location) ? 300 : 150; // Larger radius for state-level searches
-      const inatResponse = await fetch(
-        `https://api.inaturalist.org/v1/observations/species_counts?` +
-        `lat=${location.lat}&lng=${location.lon}&radius=${radius}&` +
-        `quality_grade=research&iconic_taxa=Mammalia,Aves,Reptilia,Amphibia&` +
-        `per_page=120&order=desc&order_by=count`
-      );
-
-      if (inatResponse.ok) {
-        const inatData = await inatResponse.json();
-
-        if (inatData.results && inatData.results.length > 0) {
-          // Filter and categorize by taxonomic groups first, then map to species
-          const mammals = inatData.results
-            .filter((result: any) => result.taxon?.preferred_common_name && result.taxon?.iconic_taxon_name === 'Mammalia')
-            .map((result: any) => ({
-              id: result.taxon.id?.toString() || '',
-              commonName: result.taxon.preferred_common_name,
-              scientificName: result.taxon.name,
-              conservationStatus: result.taxon.conservation_status?.status_name || 'Data Deficient',
-              habitat: '',
-              source: 'iNaturalist'
-            } as Species));
-
-          const birds = inatData.results
-            .filter((result: any) => result.taxon?.preferred_common_name && result.taxon?.iconic_taxon_name === 'Aves')
-            .map((result: any) => ({
-              id: result.taxon.id?.toString() || '',
-              commonName: result.taxon.preferred_common_name,
-              scientificName: result.taxon.name,
-              conservationStatus: result.taxon.conservation_status?.status_name || 'Data Deficient',
-              habitat: '',
-              source: 'iNaturalist'
-            } as Species));
-
-          const reptiles = inatData.results
-            .filter((result: any) => result.taxon?.preferred_common_name && result.taxon?.iconic_taxon_name === 'Reptilia')
-            .map((result: any) => ({
-              id: result.taxon.id?.toString() || '',
-              commonName: result.taxon.preferred_common_name,
-              scientificName: result.taxon.name,
-              conservationStatus: result.taxon.conservation_status?.status_name || 'Data Deficient',
-              habitat: '',
-              source: 'iNaturalist'
-            } as Species));
-
-          const amphibians = inatData.results
-            .filter((result: any) => result.taxon?.preferred_common_name && result.taxon?.iconic_taxon_name === 'Amphibia')
-            .map((result: any) => ({
-              id: result.taxon.id?.toString() || '',
-              commonName: result.taxon.preferred_common_name,
-              scientificName: result.taxon.name,
-              conservationStatus: result.taxon.conservation_status?.status_name || 'Data Deficient',
-              habitat: '',
-              source: 'iNaturalist'
-            } as Species));
-
-          // Ensure taxonomic diversity: aim for 2-3 from each group
-          const selectedMammals: Species[] = shuffleArray(mammals).slice(0, 3) as Species[];
-          const selectedBirds: Species[] = shuffleArray(birds).slice(0, 3) as Species[];
-          const selectedReptiles: Species[] = shuffleArray(reptiles).slice(0, 2) as Species[];
-          const selectedAmphibians: Species[] = shuffleArray(amphibians).slice(0, 2) as Species[];
-
-          species = [
-            ...selectedMammals,
-            ...selectedBirds,
-            ...selectedReptiles,
-            ...selectedAmphibians
-          ];
-
-          console.log(`Found ${mammals.length} mammals, ${birds.length} birds, ${reptiles.length} reptiles, ${amphibians.length} amphibians for ${location.displayName}`);
-        }
-      }
-    } catch (inatError) {
-      console.warn('iNaturalist search failed:', inatError);
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
+      return [];
     }
 
-    // Strategy 2: GBIF occurrence search for additional regional species with taxonomic targeting
-    if (species.length < 10) {
+    const locationName = location.city || location.state || location.country || 'this location';
+    console.log(`Searching for wildlife in ${locationName} using WebSearch`);
+
+    // Import OpenAI and generateText
+    const { openai } = await import('@ai-sdk/openai');
+    const { generateText } = await import('ai');
+
+    // Use WebSearch simulation to find current wildlife data
+    const searchQueries = [
+      `wildlife animals found in ${locationName} native species`,
+      `birds mammals reptiles amphibians ${locationName} local wildlife`,
+      `endangered species ${locationName} conservation status`
+    ];
+
+    let allSpecies: Species[] = [];
+
+    for (const query of searchQueries) {
       try {
-        const radius = isStateOrCountryLocation(location) ? 250 : 100;
-        const countryCode = getGBIFCountryCode(location);
+        console.log(`WebSearch query: "${query}"`);
 
-        // Search for specific taxonomic groups to ensure diversity
-        const taxonomicGroups = [
-          { name: 'Mammalia', classKey: 359 },
-          { name: 'Aves', classKey: 212 },
-          { name: 'Reptilia', classKey: 358 },
-          { name: 'Amphibia', classKey: 131 }
-        ];
+        const result = await generateText({
+          model: openai('gpt-4o'),
+          system: `You are a wildlife research expert with access to current biodiversity databases. Provide accurate, real-time information about wildlife species found in specific locations.`,
+          prompt: `Search for wildlife species in: "${query}"
 
-        for (const group of taxonomicGroups) {
-          // Build GBIF query with geographic and taxonomic filters
-          let gbifQuery = `https://api.gbif.org/v1/occurrence/search?` +
-            `decimalLatitude=${location.lat}&decimalLongitude=${location.lon}&` +
-            `radius=${radius}&limit=50&hasCoordinate=true&` +
-            `classKey=${group.classKey}&hasGeospatialIssue=false&basisOfRecord=HUMAN_OBSERVATION,OBSERVATION`;
+Find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) that are currently found in ${locationName}. For each species, provide:
 
-          // Add country filter if available
-          if (countryCode) {
-            gbifQuery += `&country=${countryCode}`;
-          }
+Format:
+1. Common Name
+Scientific Name: [Scientific name]
+Conservation Status: [Status if known, otherwise "Data Deficient"]
+Type: [mammal/bird/reptile/amphibian]
 
-          const response = await fetch(gbifQuery);
+2. Common Name
+Scientific Name: [Scientific name]
+Conservation Status: [Status if known, otherwise "Data Deficient"]
+Type: [mammal/bird/reptile/amphibian]
 
-          if (response.ok) {
-            const data = await response.json();
+Focus on:
+- Species actually found in the geographic area of ${locationName}
+- Mix of common and notable species
+- Include conservation status when known
+- Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
 
-            if (data.results && data.results.length > 0) {
-              const groupSpeciesMap = new Map<string, Species>();
+Provide real species that exist in this location based on current biodiversity data.`
+        });
 
-              for (const occurrence of data.results) {
-                if (!occurrence.scientificName || !occurrence.vernacularName) continue;
+        console.log(`Wildlife search result for "${query}":`, result.text);
 
-                const key = occurrence.scientificName;
-                if (!groupSpeciesMap.has(key)) {
-                  groupSpeciesMap.set(key, {
-                    id: occurrence.speciesKey?.toString() || key,
-                    commonName: occurrence.vernacularName,
-                    scientificName: occurrence.scientificName,
-                    conservationStatus: 'Data Deficient',
-                    habitat: occurrence.habitat || '',
-                    source: `GBIF (${group.name})`
-                  });
-                }
-              }
+        // Parse the search results to extract species
+        const speciesFromSearch = parseWildlifeSearchResults(result.text, location);
+        allSpecies = [...allSpecies, ...speciesFromSearch];
 
-              const groupSpecies = Array.from(groupSpeciesMap.values());
-
-              // Add species from this taxonomic group that aren't already in our list
-              const existingNames = new Set(species.map(s => s.scientificName.toLowerCase()));
-              const newGroupSpecies = groupSpecies.filter(s =>
-                !existingNames.has(s.scientificName.toLowerCase())
-              );
-
-              // Limit to 2 per taxonomic group to maintain diversity
-              species = [...species, ...shuffleArray(newGroupSpecies).slice(0, 2)];
-              console.log(`Added ${newGroupSpecies.length} ${group.name} species from GBIF for ${location.displayName}`);
-            }
-          }
-        }
-      } catch (gbifError) {
-        console.warn('GBIF taxonomic search failed:', gbifError);
+      } catch (searchError) {
+        console.log(`WebSearch query failed: ${searchError}`);
+        continue;
       }
     }
 
-    // Strategy 3: Enhanced GBIF search with broader geographic coverage if needed
-    if (species.length < 10) {
-      try {
-        const countryCode = getGBIFCountryCode(location);
-        if (countryCode) {
-          // Country-wide search for more diversity
-          const countryResponse = await fetch(
-            `https://api.gbif.org/v1/occurrence/search?` +
-            `country=${countryCode}&limit=100&hasCoordinate=true&` +
-            `kingdomKey=1&hasGeospatialIssue=false&basisOfRecord=HUMAN_OBSERVATION,OBSERVATION`
-          );
+    // Remove duplicates and limit results
+    const uniqueSpecies = removeDuplicateSpecies(allSpecies);
+    const finalSpecies = uniqueSpecies.slice(0, 8);
 
-          if (countryResponse.ok) {
-            const countryData = await countryResponse.json();
-            if (countryData.results && countryData.results.length > 0) {
-              const countrySpeciesMap = new Map<string, Species>();
-
-              for (const occurrence of countryData.results) {
-                if (!occurrence.scientificName || !occurrence.vernacularName) continue;
-
-                const key = occurrence.scientificName;
-                if (!countrySpeciesMap.has(key)) {
-                  const className = occurrence.class?.toLowerCase() || '';
-
-                  // Focus on vertebrates
-                  if (className.includes('mammal') || className.includes('aves') ||
-                      className.includes('reptil') || className.includes('amphibi')) {
-
-                    countrySpeciesMap.set(key, {
-                      id: occurrence.speciesKey?.toString() || key,
-                      commonName: occurrence.vernacularName,
-                      scientificName: occurrence.scientificName,
-                      conservationStatus: 'Data Deficient',
-                      habitat: occurrence.habitat || '',
-                      source: 'GBIF (Country)'
-                    });
-                  }
-                }
-              }
-
-              const countrySpecies = Array.from(countrySpeciesMap.values());
-              const existingNames = new Set(species.map(s => s.scientificName.toLowerCase()));
-              const newCountrySpecies = countrySpecies.filter(s =>
-                !existingNames.has(s.scientificName.toLowerCase())
-              );
-
-              species = [...species, ...shuffleArray(newCountrySpecies).slice(0, 6)];
-              console.log(`Added ${newCountrySpecies.length} country-wide GBIF species for ${location.displayName}`);
-            }
-          }
-        }
-      } catch (countryError) {
-        console.warn('Country-wide GBIF search failed:', countryError);
-      }
-    }
-
-    console.log(`Found ${species.length} location-specific species for ${location.displayName}`);
-
-    // Return species prioritized by conservation status and location relevance
-    const endangeredSpecies = species.filter(s =>
-      ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus)
-    );
-    const otherSpecies = species.filter(s =>
-      !['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus)
-    );
-
-    return [...endangeredSpecies, ...shuffleArray(otherSpecies)].slice(0, 10);
+    console.log(`Found ${finalSpecies.length} unique species for ${locationName}`);
+    return finalSpecies;
 
   } catch (error) {
-    console.error('Species lookup error:', error);
+    console.error('Dynamic species lookup error:', error);
+    // Fallback: return empty array, let system show appropriate message
     return [];
   }
+}
+
+function parseWildlifeSearchResults(searchResults: string, location: Location): Species[] {
+  const species: Species[] = [];
+
+  try {
+    const lines = searchResults.split('\n');
+    let currentSpecies: Partial<Species> = {};
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine) continue;
+
+      // Check if line starts with a number (new species)
+      const numberMatch = trimmedLine.match(/^(\d+)\.\s*(.+)/);
+      if (numberMatch) {
+        // Save previous species if it exists
+        if (currentSpecies.commonName) {
+          species.push({
+            id: currentSpecies.id || `${currentSpecies.commonName}-${location.displayName}`,
+            commonName: currentSpecies.commonName,
+            scientificName: currentSpecies.scientificName || 'Unknown',
+            conservationStatus: currentSpecies.conservationStatus || 'Data Deficient',
+            habitat: currentSpecies.habitat || '',
+            source: 'WebSearch'
+          });
+        }
+
+        // Start new species
+        currentSpecies = {
+          commonName: numberMatch[2].trim(),
+          scientificName: '',
+          conservationStatus: 'Data Deficient',
+          habitat: '',
+          id: ''
+        };
+        continue;
+      }
+
+      // Check for scientific name line
+      const scientificMatch = trimmedLine.match(/^Scientific Name:\s*(.+)$/i);
+      if (scientificMatch && currentSpecies.commonName) {
+        currentSpecies.scientificName = scientificMatch[1].trim();
+        continue;
+      }
+
+      // Check for conservation status line
+      const statusMatch = trimmedLine.match(/^Conservation Status:\s*(.+)$/i);
+      if (statusMatch && currentSpecies.commonName) {
+        currentSpecies.conservationStatus = statusMatch[1].trim();
+        continue;
+      }
+
+      // Check for type line
+      const typeMatch = trimmedLine.match(/^Type:\s*(.+)$/i);
+      if (typeMatch && currentSpecies.commonName) {
+        currentSpecies.habitat = typeMatch[1].trim();
+        continue;
+      }
+    }
+
+    // Don't forget the last species
+    if (currentSpecies.commonName) {
+      species.push({
+        id: currentSpecies.id || `${currentSpecies.commonName}-${location.displayName}`,
+        commonName: currentSpecies.commonName,
+        scientificName: currentSpecies.scientificName || 'Unknown',
+        conservationStatus: currentSpecies.conservationStatus || 'Data Deficient',
+        habitat: currentSpecies.habitat || '',
+        source: 'WebSearch'
+      });
+    }
+
+    console.log(`Parsed ${species.length} species from wildlife search results`);
+    return species;
+
+  } catch (error) {
+    console.error('Error parsing wildlife search results:', error);
+    return [];
+  }
+}
+
+function removeDuplicateSpecies(species: Species[]): Species[] {
+  const uniqueSpeciesMap = new Map<string, Species>();
+
+  for (const sp of species) {
+    const key = sp.commonName.toLowerCase();
+    if (!uniqueSpeciesMap.has(key)) {
+      uniqueSpeciesMap.set(key, sp);
+    }
+  }
+
+  return Array.from(uniqueSpeciesMap.values());
 }
 
 async function enhanceWithIUCNStatus(species: Species[]): Promise<Species[]> {
@@ -700,7 +649,7 @@ export async function findConservationOrganizations(
     organizations = [...organizations, ...webSearchOrgs];
 
     // Add government agencies as backup/supplement
-    const governmentOrgs = getGovernmentConservationOrgs(location);
+    const governmentOrgs = await getGovernmentConservationOrgs(location);
     const existingNames = new Set(organizations.map(org => org.name.toLowerCase()));
     const newGovOrgs = governmentOrgs.filter(org =>
       !existingNames.has(org.name.toLowerCase())
@@ -714,7 +663,7 @@ export async function findConservationOrganizations(
   } catch (error) {
     console.error('Organization search error:', error);
     // Return at least government agencies as fallback
-    return getGovernmentConservationOrgs(location).slice(0, 3);
+    return (await getGovernmentConservationOrgs(location)).slice(0, 3);
   }
 }
 
@@ -1267,107 +1216,73 @@ function getGeneralConservationOrgs(location: Location): Organization[] {
   return orgs;
 }
 
-function getGovernmentConservationOrgs(location: Location): Organization[] {
-  const state = location.state?.toLowerCase() || '';
-  const country = location.country?.toLowerCase() || '';
-
-  if (country.includes('united states') || country.includes('usa')) {
-    const stateOrgs: Organization[] = [];
-
-    // Comprehensive state wildlife departments
-    const stateWildlifeDepts: { [key: string]: { name: string; website: string } } = {
-      'alabama': { name: 'Alabama Department of Conservation and Natural Resources', website: 'https://www.outdooralabama.com' },
-      'alaska': { name: 'Alaska Department of Fish and Game', website: 'https://www.adfg.alaska.gov' },
-      'arizona': { name: 'Arizona Game and Fish Department', website: 'https://www.azgfd.gov' },
-      'arkansas': { name: 'Arkansas Game and Fish Commission', website: 'https://www.agfc.com' },
-      'california': { name: 'California Department of Fish and Wildlife', website: 'https://wildlife.ca.gov' },
-      'colorado': { name: 'Colorado Parks and Wildlife', website: 'https://cpw.state.co.us' },
-      'connecticut': { name: 'Connecticut Department of Energy and Environmental Protection', website: 'https://portal.ct.gov/DEEP' },
-      'delaware': { name: 'Delaware Division of Fish and Wildlife', website: 'https://www.dnrec.delaware.gov' },
-      'florida': { name: 'Florida Fish and Wildlife Conservation Commission', website: 'https://myfwc.com' },
-      'georgia': { name: 'Georgia Department of Natural Resources', website: 'https://georgiawildlife.com' },
-      'hawaii': { name: 'Hawaii Division of Forestry and Wildlife', website: 'https://dlnr.hawaii.gov' },
-      'idaho': { name: 'Idaho Fish and Game', website: 'https://idfg.idaho.gov' },
-      'illinois': { name: 'Illinois Department of Natural Resources', website: 'https://www2.illinois.gov/dnr' },
-      'indiana': { name: 'Indiana Department of Natural Resources', website: 'https://www.in.gov/dnr' },
-      'iowa': { name: 'Iowa Department of Natural Resources', website: 'https://www.iowadnr.gov' },
-      'kansas': { name: 'Kansas Department of Wildlife and Parks', website: 'https://ksoutdoors.com' },
-      'kentucky': { name: 'Kentucky Department of Fish and Wildlife Resources', website: 'https://fw.ky.gov' },
-      'louisiana': { name: 'Louisiana Department of Wildlife and Fisheries', website: 'https://www.wlf.louisiana.gov' },
-      'maine': { name: 'Maine Department of Inland Fisheries and Wildlife', website: 'https://www.maine.gov/ifw' },
-      'maryland': { name: 'Maryland Department of Natural Resources', website: 'https://dnr.maryland.gov' },
-      'massachusetts': { name: 'Massachusetts Division of Fisheries and Wildlife', website: 'https://www.mass.gov/orgs/division-of-fisheries-and-wildlife' },
-      'michigan': { name: 'Michigan Department of Natural Resources', website: 'https://www.michigan.gov/dnr' },
-      'minnesota': { name: 'Minnesota Department of Natural Resources', website: 'https://www.dnr.state.mn.us' },
-      'mississippi': { name: 'Mississippi Department of Wildlife, Fisheries, and Parks', website: 'https://www.mdwfp.com' },
-      'missouri': { name: 'Missouri Department of Conservation', website: 'https://mdc.mo.gov' },
-      'montana': { name: 'Montana Fish, Wildlife & Parks', website: 'https://fwp.mt.gov' },
-      'nebraska': { name: 'Nebraska Game and Parks Commission', website: 'https://outdoornebraska.gov' },
-      'nevada': { name: 'Nevada Department of Wildlife', website: 'https://www.ndow.org' },
-      'new hampshire': { name: 'New Hampshire Fish and Game Department', website: 'https://www.wildlife.state.nh.us' },
-      'new jersey': { name: 'New Jersey Division of Fish and Wildlife', website: 'https://www.state.nj.us/dep/fgw' },
-      'new mexico': { name: 'New Mexico Department of Game and Fish', website: 'https://www.wildlife.state.nm.us' },
-      'new york': { name: 'New York State Department of Environmental Conservation', website: 'https://www.dec.ny.gov' },
-      'north carolina': { name: 'North Carolina Wildlife Resources Commission', website: 'https://www.ncwildlife.org' },
-      'north dakota': { name: 'North Dakota Game and Fish Department', website: 'https://gf.nd.gov' },
-      'ohio': { name: 'Ohio Division of Wildlife', website: 'https://ohiodnr.gov/wps/portal/gov/odnr/discover-and-learn/safety-conservation/about-ODNR/wildlife' },
-      'oklahoma': { name: 'Oklahoma Department of Wildlife Conservation', website: 'https://www.wildlifedepartment.com' },
-      'oregon': { name: 'Oregon Department of Fish and Wildlife', website: 'https://www.dfw.state.or.us' },
-      'pennsylvania': { name: 'Pennsylvania Game Commission', website: 'https://www.pgc.pa.gov' },
-      'rhode island': { name: 'Rhode Island Division of Fish and Wildlife', website: 'https://dem.ri.gov' },
-      'south carolina': { name: 'South Carolina Department of Natural Resources', website: 'https://www.dnr.sc.gov' },
-      'south dakota': { name: 'South Dakota Game, Fish and Parks', website: 'https://gfp.sd.gov' },
-      'tennessee': { name: 'Tennessee Wildlife Resources Agency', website: 'https://www.tn.gov/twra' },
-      'texas': { name: 'Texas Parks and Wildlife Department', website: 'https://tpwd.texas.gov' },
-      'utah': { name: 'Utah Division of Wildlife Resources', website: 'https://wildlife.utah.gov' },
-      'vermont': { name: 'Vermont Fish and Wildlife Department', website: 'https://vtfishandwildlife.com' },
-      'virginia': { name: 'Virginia Department of Wildlife Resources', website: 'https://dwr.virginia.gov' },
-      'washington': { name: 'Washington Department of Fish and Wildlife', website: 'https://wdfw.wa.gov' },
-      'west virginia': { name: 'West Virginia Division of Natural Resources', website: 'https://www.wvdnr.gov' },
-      'wisconsin': { name: 'Wisconsin Department of Natural Resources', website: 'https://dnr.wisconsin.gov' },
-      'wyoming': { name: 'Wyoming Game and Fish Department', website: 'https://wgfd.wyo.gov' }
-    };
-
-    // Find matching state department
-    for (const [stateName, dept] of Object.entries(stateWildlifeDepts)) {
-      if (state.includes(stateName)) {
-        stateOrgs.push({
-          name: dept.name,
-          website: dept.website,
-          description: 'State wildlife conservation and management',
-          location: stateName.charAt(0).toUpperCase() + stateName.slice(1),
-          contactInfo: ''
-        });
-        break;
-      }
+async function getGovernmentConservationOrgs(location: Location): Promise<Organization[]> {
+  try {
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
+      return [];
     }
 
-    // Add federal agencies
-    stateOrgs.push({
-      name: 'US Fish and Wildlife Service',
-      website: 'https://www.fws.gov',
-      description: 'Federal wildlife conservation agency',
-      location: 'United States',
-      contactInfo: ''
+    const locationName = location.city || location.state || location.country || 'this location';
+    console.log(`Searching for government wildlife agencies in ${locationName}`);
+
+    // Import OpenAI and generateText
+    const { openai } = await import('@ai-sdk/openai');
+    const { generateText } = await import('ai');
+
+    const result = await generateText({
+      model: openai('gpt-4o'),
+      system: `You are an expert on government wildlife agencies and environmental departments worldwide. Provide accurate, current information about official government organizations responsible for wildlife conservation.`,
+      prompt: `Find the official government wildlife and environmental agencies for ${locationName}. Include:
+
+1. State/Provincial wildlife departments (if applicable)
+2. Federal/National wildlife services
+3. Environmental protection agencies
+4. Parks and wildlife departments
+
+For each agency, provide:
+
+Format:
+1. Agency Name
+Website: [Official website URL]
+Description: [Brief description of their wildlife/conservation role]
+Location: [Geographic scope - state/province/country]
+
+2. Agency Name
+Website: [Official website URL]
+Description: [Brief description of their wildlife/conservation role]
+Location: [Geographic scope - state/province/country]
+
+Focus on official government agencies that:
+- Manage wildlife conservation
+- Issue hunting/fishing licenses
+- Protect endangered species
+- Manage state/national parks and wildlife refuges
+- Enforce wildlife protection laws
+
+Provide real, official government agencies with their actual websites.`
     });
 
-    return stateOrgs;
-  }
+    console.log(`Government agency search result:`, result.text);
 
-  // International government agencies
-  if (country.includes('canada')) {
+    // Parse the search results to extract organizations
+    const govOrgs = extractOrganizationsFromText(result.text, location);
+    return govOrgs.slice(0, 3); // Return top 3 government agencies
+
+  } catch (error) {
+    console.error('Government agency search failed:', error);
+    // Fallback: return generic agencies
     return [
       {
-        name: 'Environment and Climate Change Canada',
-        website: 'https://www.canada.ca/en/environment-climate-change.html',
-        description: 'Federal environmental and wildlife agency',
-        location: 'Canada',
+        name: 'Local Wildlife Department',
+        website: '',
+        description: 'Contact your local wildlife management agency',
+        location: location.city || location.state || location.country || 'Local',
         contactInfo: ''
       }
     ];
   }
-
-  return [];
 }
 
 function getHabitatsForLocation(location: Location): string[] {

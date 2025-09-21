@@ -11,6 +11,13 @@ import {
 } from '@/lib/conservation-tools';
 import { WILDLIFE_POETRY_AGENT_PROMPT } from '@/lib/agent-prompts';
 import { findPoemByAnimal, getRandomPoem } from '@/lib/animal-poems-rag';
+import {
+  CONFIG,
+  createCountryPattern,
+  createStatePattern,
+  createAnimalPattern,
+  createAnimalDescriptivePattern
+} from '@/lib/config';
 
 // Simple in-memory session storage (in production, use Redis or database)
 const sessions = new Map<string, { location?: Location, species?: Species[], step: 'location' | 'animal' }>();
@@ -30,6 +37,26 @@ export async function POST(request: NextRequest) {
     let session = sessions.get(sessionId) || { step: 'location' };
     sessions.set(sessionId, session);
 
+    // Check if user is providing a new location while in animal selection mode
+    if (session.step === 'animal' && session.location) {
+      // Simple heuristic: if the message looks like a location, reset to location step
+      const locationIndicators = [
+        ...CONFIG.patterns.locationIndicators,
+        createCountryPattern(),
+        createStatePattern()
+      ];
+
+      const isLocationInput = locationIndicators.some(pattern => pattern.test(message.trim()));
+
+      if (isLocationInput) {
+        // Reset session for new location search
+        session.step = 'location';
+        delete session.location;
+        delete session.species;
+        sessions.set(sessionId, session);
+      }
+    }
+
     // AGENT 1: Location → Animal List
     if (session.step === 'location' || !session.location) {
       // Enhanced location parsing with guardrails
@@ -38,14 +65,11 @@ export async function POST(request: NextRequest) {
       console.log(`Lower message: "${lowerMessage}"`);
 
       // Guardrail: Check for non-location inputs first
+      const animalPattern = createAnimalPattern();
       const nonLocationInputs = [
-        /^(hello|hi|hey|what|who|when|how|why|help|support|info|about|contact)/i,
-        /^(yes|no|ok|okay|sure|thanks|thank you|please)/i,
-        /^(animal|wildlife|species|conservation|organization|find|search|show|list)/i,
-        /^(eagle|bear|wolf|deer|fox|owl|hawk|salmon|turtle|frog|bat|snake|lizard|butterfly|crane|duck|rabbit|squirrel|mouse|rat|cat|lynx|otter|seal|whale|dolphin)/i,
-        /^(bird|mammal|reptile|amphibian|fish)/i,
-        /^[0-9]+$/, // Just numbers
-        /^.{100,}$/ // Very long messages are probably not locations
+        ...CONFIG.patterns.nonLocationInputs,
+        animalPattern,
+        new RegExp(`^.{${CONFIG.validation.maxVeryLongMessage},}$`) // Very long messages are probably not locations
       ];
 
       const isNonLocationInput = nonLocationInputs.some(pattern => pattern.test(message.trim()));
@@ -72,18 +96,20 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Pattern 3: Country names - "United States", "Canada", "Mexico", etc.
+      // Pattern 3: Country names - dynamic pattern from config
       if (!locationQuery) {
-        const countryMatch = message.match(/^(united states|usa|canada|mexico|united kingdom|uk|australia|brazil|germany|france|spain|italy|japan|china|india|nepal|bangladesh|pakistan|afghanistan|thailand|vietnam|cambodia|laos|myanmar|malaysia|singapore|indonesia|philippines|south korea|north korea|mongolia|russia|turkey|egypt|nigeria|kenya|ethiopia|ghana|morocco|algeria|tunisia|israel|saudi arabia|uae|iran|iraq|south africa|argentina|chile|colombia|peru|venezuela|ecuador|bolivia|paraguay|uruguay|netherlands|belgium|switzerland|austria|poland|czech republic|hungary|romania|bulgaria|croatia|serbia|greece|sweden|norway|denmark|finland)$/i);
+        const countryPattern = createCountryPattern();
+        const countryMatch = message.match(countryPattern);
         if (countryMatch) {
           locationQuery = countryMatch[1];
           console.log(`Pattern 3 matched: "${locationQuery}"`);
         }
       }
 
-      // Pattern 4: State names only - "California", "Texas", "Florida", etc.
+      // Pattern 4: State names only - dynamic pattern from config
       if (!locationQuery) {
-        const stateMatch = message.match(/^(alabama|alaska|arizona|arkansas|california|colorado|connecticut|delaware|florida|georgia|hawaii|idaho|illinois|indiana|iowa|kansas|kentucky|louisiana|maine|maryland|massachusetts|michigan|minnesota|mississippi|missouri|montana|nebraska|nevada|new hampshire|new jersey|new mexico|new york|north carolina|north dakota|ohio|oklahoma|oregon|pennsylvania|rhode island|south carolina|south dakota|tennessee|texas|utah|vermont|virginia|washington|west virginia|wisconsin|wyoming)$/i);
+        const statePattern = createStatePattern();
+        const stateMatch = message.match(statePattern);
         if (stateMatch) {
           locationQuery = stateMatch[1];
         }
@@ -92,12 +118,17 @@ export async function POST(request: NextRequest) {
       // Pattern 5: City name only - case insensitive (but be more selective)
       if (!locationQuery) {
         const cityMatch = message.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*)$/i);
-        if (cityMatch && cityMatch[1].length > 2 && cityMatch[1].length < 50) {
+        if (cityMatch &&
+            cityMatch[1].length > CONFIG.validation.minLocationLength &&
+            cityMatch[1].length < CONFIG.validation.maxLocationLength) {
           // Additional check: make sure it's not a common non-location word
-          const commonWords = ['hello', 'help', 'animal', 'wildlife', 'species', 'conservation', 'organization', 'find', 'search', 'show', 'list', 'eagle', 'bear', 'wolf', 'deer', 'fox', 'owl', 'hawk', 'salmon', 'turtle', 'frog', 'bat', 'snake', 'lizard', 'butterfly', 'crane', 'duck', 'rabbit', 'squirrel', 'skunk', 'raccoon', 'beaver', 'otter', 'chipmunk', 'mouse', 'rat', 'vole', 'shrew', 'mole', 'weasel', 'marten', 'fisher', 'badger', 'porcupine', 'woodchuck', 'muskrat', 'opossum', 'moose', 'elk', 'caribou', 'bison', 'sheep', 'goat', 'pika', 'hare', 'bobcat', 'lynx', 'cougar', 'coyote', 'wolverine', 'seal', 'whale', 'dolphin', 'porpoise', 'walrus', 'manatee', 'dugong'];
+          const allExcludedWords = [
+            ...CONFIG.animals.excludedWords,
+            ...CONFIG.animals.commonNames
+          ];
           const words = cityMatch[1].toLowerCase().split(' ');
-          const isAnimalName = words.some(word => commonWords.includes(word)) ||
-                              /\b(striped|spotted|common|american|european|eastern|western|northern|southern|red|black|white|brown|gray|grey|blue|green|yellow|great|little|small|large|giant)\s+(skunk|fox|deer|bear|wolf|eagle|hawk|owl|duck|goose|frog|toad|turtle|snake|lizard|salamander|newt|rabbit|hare|squirrel|chipmunk|mouse|rat|bat|seal|whale|dolphin|otter)\b/i.test(cityMatch[1]);
+          const isAnimalName = words.some((word: string) => allExcludedWords.includes(word)) ||
+                              createAnimalDescriptivePattern().test(cityMatch[1]);
 
           if (!isAnimalName) {
             locationQuery = cityMatch[1];
@@ -106,7 +137,10 @@ export async function POST(request: NextRequest) {
       }
 
       // Pattern 6: Any reasonable location string (fallback, but more restrictive)
-      if (!locationQuery && message.trim().length > 2 && message.trim().length < 50 && /^[A-Za-z\s,.-]+$/.test(message.trim())) {
+      if (!locationQuery &&
+          message.trim().length > CONFIG.validation.minLocationLength &&
+          message.trim().length < CONFIG.validation.maxLocationLength &&
+          /^[A-Za-z\s,.-]+$/.test(message.trim())) {
         // Only if it contains geographical indicators or has the right structure
         if (message.includes(',') || /\b(city|town|village|county|state|province|country)\b/i.test(message)) {
           locationQuery = message.trim();
@@ -142,7 +176,7 @@ export async function POST(request: NextRequest) {
             ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
             : `**Wildlife near ${locationDisplayName}:**\n\n`;
 
-          species.slice(0, 8).forEach((animal) => {
+          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
               : '';
@@ -167,12 +201,8 @@ export async function POST(request: NextRequest) {
 
       // Guardrail: Check for non-animal inputs first
       const nonAnimalInputs = [
-        /^(hello|hi|hey|what|who|when|how|why|help|support|info|about|contact)/i,
-        /^(yes|no|ok|okay|sure|thanks|thank you|please)/i,
-        /^(location|where|place|city|state|country)/i,
-        /^(find|search|show|list|give|tell|get)/i,
-        /^[0-9]+$/, // Just numbers
-        /^.{100,}$/ // Very long messages
+        ...CONFIG.patterns.nonAnimalInputs,
+        new RegExp(`^.{${CONFIG.validation.maxVeryLongMessage},}$`) // Very long messages
       ];
 
       const isNonAnimalInput = nonAnimalInputs.some(pattern => pattern.test(message.trim()));
@@ -215,10 +245,9 @@ export async function POST(request: NextRequest) {
         // Check for partial matches with significant words (e.g., "eagle" matches "Bald Eagle")
         const words = commonNameLower.split(' ');
         for (const word of words) {
-          if (word.length > 3 && lowerMessage.includes(word)) {
+          if (word.length > CONFIG.validation.minAnimalNameLength && lowerMessage.includes(word)) {
             // Make sure it's not a common word that could match multiple animals
-            const commonWords = ['bird', 'fish', 'small', 'large', 'white', 'black', 'brown', 'red', 'blue', 'green'];
-            if (!commonWords.includes(word)) {
+            if (!CONFIG.animals.excludedWords.includes(word)) {
               selectedAnimal = s.commonName;
               matchedSpecies = s;
               break;
@@ -234,9 +263,7 @@ export async function POST(request: NextRequest) {
           const commonNameLower = s.commonName.toLowerCase();
 
           // Check for animal type keywords that match our specific animals
-          const animalKeywords = ['eagle', 'bear', 'wolf', 'deer', 'fox', 'owl', 'hawk', 'salmon', 'turtle', 'frog', 'bat', 'snake', 'lizard', 'butterfly', 'crane', 'duck', 'rabbit', 'squirrel', 'mouse', 'rat', 'cat', 'lynx', 'otter', 'seal', 'whale', 'dolphin'];
-
-          for (const keyword of animalKeywords) {
+          for (const keyword of CONFIG.animals.commonNames) {
             if (lowerMessage.includes(keyword) && commonNameLower.includes(keyword)) {
               selectedAnimal = s.commonName;
               matchedSpecies = s;
@@ -265,18 +292,15 @@ export async function POST(request: NextRequest) {
           response += `- Contact your state wildlife department\n- Search for local conservation groups\n\nThese can help you learn how to protect ${selectedAnimal}.`;
         }
 
-        // Reset session for new conversation
-        session.step = 'location';
-        delete session.location;
-        delete session.species;
-        sessions.set(sessionId, session);
+        // Keep session data for potential follow-up (poetry generation)
+        // Session will be reset on next location input
 
         return NextResponse.json({ response });
       } else {
         // Animal not recognized, show available options from the original list ONLY
         if (species.length > 0) {
           let response = `❌ **That animal wasn't found in your area.**\n\nPlease choose from these animals found near ${session.location.city || session.location.state || session.location.country}:\n\n`;
-          species.slice(0, 8).forEach((animal) => {
+          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
               : '';

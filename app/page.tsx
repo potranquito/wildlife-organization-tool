@@ -21,6 +21,7 @@ import {
 import type { UIMessage } from "ai";
 import { MessageFormatter } from "@/components/message-formatter";
 import { RoadrunnerLoader } from "@/components/roadrunner-loader";
+import { CONFIG } from "@/lib/config";
 
 export default function Home() {
   const [messages, setMessages] = useState<UIMessage[]>([
@@ -117,9 +118,9 @@ export default function Home() {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
-    // Ensure minimum 5-second loading time for animation
+    // Ensure minimum loading time for animation
     const startTime = Date.now();
-    const minLoadingTime = 5000;
+    const minLoadingTime = CONFIG.timing.minLoadingTime;
 
     try {
       const response = await fetch("/api/chat", {
@@ -162,11 +163,19 @@ export default function Home() {
             clearTimeout(poemTimeoutId);
           }
 
-          // Schedule poem generation for 5 seconds later
+          // Add indicator message that poem is coming
+          const indicatorMessage: UIMessage = {
+            id: (Date.now() + 2).toString(),
+            role: "assistant",
+            parts: [{ type: "text", text: `📝 *Generating an educational poem about the ${animal}...*` }],
+          };
+          setMessages((prev) => [...prev, indicatorMessage]);
+
+          // Schedule poem generation based on configuration
           const timeoutId = setTimeout(() => {
             generatePoem(animal);
             setPoemTimeoutId(null);
-          }, 5000);
+          }, CONFIG.timing.poemDelay);
 
           setPoemTimeoutId(timeoutId);
         }
