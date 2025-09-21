@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
 
     // Check if user is providing a new location while in animal selection mode
     if (session.step === 'animal' && session.location) {
-      // Simple heuristic: if the message looks like a location, reset to location step
+      // Only check for explicit location patterns, not animal names
       const locationIndicators = [
         ...CONFIG.patterns.locationIndicators,
         createCountryPattern(),
@@ -69,7 +69,19 @@ export async function POST(request: NextRequest) {
 
       const isLocationInput = locationIndicators.some(pattern => pattern.test(message.trim()));
 
-      if (isLocationInput) {
+      // Additional check: make sure this isn't just an animal name from our species list
+      const isAnimalFromList = session.species?.some(species => {
+        const normalizedMessage = message.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedCommonName = species.commonName.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedScientificName = species.scientificName.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
+        return normalizedMessage === normalizedCommonName ||
+               normalizedMessage === normalizedScientificName ||
+               message.toLowerCase().trim() === species.commonName.toLowerCase() ||
+               message.toLowerCase().trim() === species.scientificName.toLowerCase();
+      });
+
+      if (isLocationInput && !isAnimalFromList) {
         // Reset session for new location search
         session.step = 'location';
         delete session.location;
