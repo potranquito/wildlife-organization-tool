@@ -128,41 +128,57 @@ export async function findSpeciesByLocation(location: Location): Promise<Species
       try {
         console.log(`WebSearch query: "${query}"`);
 
-        // For now, let's use the enhanced AI approach with better prompting
-        // TODO: Implement actual WebSearch tool when available in AI SDK
-        const result = await generateText({
-          model: openai('gpt-4o'),
-          system: `You are a wildlife research expert with access to real-time biodiversity databases and web search capabilities. Provide current, accurate information about wildlife species.`,
-          prompt: `Search for current wildlife species data: "${query}"
+        // Use OpenAI's WebSearch-enabled model
+        const { OpenAI } = await import('openai');
+        const openaiClient = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY
+        });
 
-Use your knowledge of recent biodiversity research and online databases to find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) currently found in ${locationName}.
+        const result = await openaiClient.chat.completions.create({
+          model: 'gpt-4o-search-preview',
+          web_search_options: {},
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a wildlife research expert. Search the web for current, accurate information about wildlife species in specific locations.'
+            },
+            {
+              role: 'user',
+              content: `Find wildlife species data for: "${query}"
+
+Search for 8-12 different wildlife species (mammals, birds, reptiles, amphibians) currently found in ${locationName}.
 
 Format results as:
 
 1. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status based on latest IUCN data, or "Data Deficient"]
+Conservation Status: [Current IUCN status or "Data Deficient"]
 Type: [mammal/bird/reptile/amphibian]
 
 2. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status based on latest IUCN data, or "Data Deficient"]
+Conservation Status: [Current IUCN status or "Data Deficient"]
 Type: [mammal/bird/reptile/amphibian]
 
 Focus on:
 - Species actually found in the geographic area of ${locationName}
 - Mix of common and notable species with current conservation status
-- Include recent taxonomy and status updates
+- Include recent taxonomy and status updates from IUCN Red List
 - Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
 
-Provide real species based on current biodiversity data and research.`,
+Search the web for real species based on current biodiversity databases like IUCN, iNaturalist, and GBIF.`
+            }
+          ],
           temperature: 0.3
         });
 
-        console.log(`WebSearch result for "${query}":`, result.text);
+        const resultText = result.choices[0]?.message?.content || '';
+        const mockResult = { text: resultText };
+
+        console.log(`WebSearch result for "${query}":`, mockResult.text);
 
         // Parse the search results to extract species
-        const speciesFromSearch = parseWildlifeSearchResults(result.text, location);
+        const speciesFromSearch = parseWildlifeSearchResults(mockResult.text, location);
         allSpecies = [...allSpecies, ...speciesFromSearch];
 
       } catch (searchError) {
@@ -950,14 +966,25 @@ async function searchConservationOrganizations(
           const { openai } = await import('@ai-sdk/openai');
           const { generateText } = await import('ai');
 
-          // Enhanced organization search with better prompting
-          // TODO: Implement actual WebSearch tool when available in AI SDK
-          const searchResult = await generateText({
-            model: openai('gpt-4o'),
-            system: `You are a conservation organization researcher with access to current web data and organization databases. Provide accurate, up-to-date information about active conservation organizations.`,
-            prompt: `Search for real conservation organizations for: "${query}"
+          // Use OpenAI's WebSearch-enabled model for conservation organizations
+          const { OpenAI } = await import('openai');
+          const openaiClient = new OpenAI({
+            apiKey: process.env.OPENAI_API_KEY
+          });
 
-Find current, legitimate organizations that work with ${species.commonName} or ${speciesGroup} in ${locationName}.
+          const searchResult = await openaiClient.chat.completions.create({
+            model: 'gpt-4o-search-preview',
+            web_search_options: {},
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a conservation organization researcher. Search the web for current, legitimate conservation organizations.'
+              },
+              {
+                role: 'user',
+                content: `Find conservation organizations for: "${query}"
+
+Search for current, legitimate organizations that work with ${species.commonName} or ${speciesGroup} in ${locationName}.
 
 Format results as:
 
@@ -973,15 +1000,20 @@ Focus on:
 - State wildlife agencies and departments
 - Established national organizations with local programs
 
-Provide real organizations with actual websites that are currently active. Return 3-5 organizations.`,
+Search the web for real organizations with actual websites that are currently active. Return 3-5 organizations.`
+              }
+            ],
             temperature: 0.2
           });
 
-          console.log(`WebSearch result for "${query}":`, searchResult.text);
+          const searchResultText = searchResult.choices[0]?.message?.content || '';
+          const mockSearchResult = { text: searchResultText };
 
-          if (searchResult && searchResult.text && searchResult.text.length > 0) {
+          console.log(`WebSearch result for "${query}":`, mockSearchResult.text);
+
+          if (mockSearchResult && mockSearchResult.text && mockSearchResult.text.length > 0) {
             // Parse the search results to extract organizations
-            const orgsFromSearch = extractOrganizationsFromText(searchResult.text, location);
+            const orgsFromSearch = extractOrganizationsFromText(mockSearchResult.text, location);
             webSearchResults = [...webSearchResults, ...orgsFromSearch];
           }
         } catch (searchError) {
