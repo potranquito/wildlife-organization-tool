@@ -154,8 +154,6 @@ export async function POST(request: NextRequest) {
 
     // AGENT 1: Location → Animal List (Enhanced with disambiguation)
     if (session.step === 'location' || !session.location) {
-      console.log(`Processing location input: "${message}"`);
-
       // Use the new enhanced location agent
       const locationResult = await parseUserLocation(message);
 
@@ -240,66 +238,59 @@ export async function POST(request: NextRequest) {
       let selectedAnimal: string | undefined;
       let matchedSpecies: Species | undefined;
 
-      // FLEXIBLE matching: Accept animals from the species list with various input formats
-      // Normalize the user input for better matching
-      const normalizedMessage = lowerMessage.trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+      // ENHANCED matching: Accept animals from the species list with various input formats
+      // First, try simple direct matches
+      const trimmedMessage = message.trim();
+      const trimmedLowerMessage = lowerMessage.trim();
 
+      // Try exact matches first (case insensitive)
       for (const s of species) {
-        const commonNameLower = s.commonName.toLowerCase();
-        const scientificNameLower = s.scientificName.toLowerCase();
-        const normalizedCommonName = commonNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-        const normalizedScientificName = scientificNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        if (!s.commonName || !s.scientificName) continue;
 
-        // Exact match on normalized names
-        if (normalizedMessage === normalizedCommonName || normalizedMessage === normalizedScientificName) {
+        const commonNameLower = s.commonName.toLowerCase().trim();
+        const scientificNameLower = s.scientificName.toLowerCase().trim();
+
+        // Exact match (most reliable)
+        if (trimmedLowerMessage === commonNameLower || trimmedLowerMessage === scientificNameLower) {
           selectedAnimal = s.commonName;
           matchedSpecies = s;
           break;
         }
-
-        // Exact match on original lowercase (fallback)
-        if (lowerMessage.trim() === commonNameLower || lowerMessage.trim() === scientificNameLower) {
-          selectedAnimal = s.commonName;
-          matchedSpecies = s;
-          break;
-        }
-
-        // Check if message contains the full animal name
-        if (lowerMessage.includes(commonNameLower) || lowerMessage.includes(scientificNameLower)) {
-          selectedAnimal = s.commonName;
-          matchedSpecies = s;
-          break;
-        }
-
-        // Check for partial matches with significant words (e.g., "eagle" matches "Bald Eagle")
-        const words = commonNameLower.split(' ');
-        for (const word of words) {
-          if (word.length > CONFIG.validation.minAnimalNameLength && lowerMessage.includes(word)) {
-            // Make sure it's not a common word that could match multiple animals
-            if (!CONFIG.animals.excludedWords.includes(word)) {
-              selectedAnimal = s.commonName;
-              matchedSpecies = s;
-              break;
-            }
-          }
-        }
-        if (selectedAnimal) break;
       }
 
-      // Only try keyword matching if no direct match found, and only for animals in our list
+      // If no exact match, try normalized matches
+      if (!selectedAnimal) {
+        const normalizedMessage = trimmedLowerMessage.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
+        for (const s of species) {
+          if (!s.commonName || !s.scientificName) continue;
+
+          const normalizedCommonName = s.commonName.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+          const normalizedScientificName = s.scientificName.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
+          if (normalizedMessage === normalizedCommonName || normalizedMessage === normalizedScientificName) {
+            selectedAnimal = s.commonName;
+            matchedSpecies = s;
+            break;
+          }
+        }
+      }
+
+      // If still no match, try partial/contains matches
       if (!selectedAnimal) {
         for (const s of species) {
-          const commonNameLower = s.commonName.toLowerCase();
+          if (!s.commonName || !s.scientificName) continue;
 
-          // Check for animal type keywords that match our specific animals
-          for (const keyword of CONFIG.animals.commonNames) {
-            if (lowerMessage.includes(keyword) && commonNameLower.includes(keyword)) {
-              selectedAnimal = s.commonName;
-              matchedSpecies = s;
-              break;
-            }
+          const commonNameLower = s.commonName.toLowerCase().trim();
+          const scientificNameLower = s.scientificName.toLowerCase().trim();
+
+          // Check if the user input contains the animal name or vice versa
+          if (trimmedLowerMessage.includes(commonNameLower) || commonNameLower.includes(trimmedLowerMessage) ||
+              trimmedLowerMessage.includes(scientificNameLower) || scientificNameLower.includes(trimmedLowerMessage)) {
+            selectedAnimal = s.commonName;
+            matchedSpecies = s;
+            break;
           }
-          if (selectedAnimal) break;
         }
       }
 
