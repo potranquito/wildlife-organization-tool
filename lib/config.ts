@@ -50,6 +50,13 @@ export const CONFIG = {
       'rhode island', 'south carolina', 'south dakota', 'tennessee',
       'texas', 'utah', 'vermont', 'virginia', 'washington', 'west virginia',
       'wisconsin', 'wyoming'
+    ],
+
+    canadianProvinces: [
+      'alberta', 'british columbia', 'manitoba', 'new brunswick',
+      'newfoundland and labrador', 'northwest territories', 'nova scotia',
+      'nunavut', 'ontario', 'prince edward island', 'quebec', 'saskatchewan',
+      'yukon', 'yukon territory'
     ]
   },
 
@@ -86,18 +93,29 @@ export const CONFIG = {
   // Input patterns for validation
   patterns: {
     nonLocationInputs: [
-      /^(hello|hi|hey|what|who|when|how|why|help|support|info|about|contact)/i,
-      /^(yes|no|ok|okay|sure|thanks|thank you|please)/i,
-      /^(animal|wildlife|species|conservation|organization|find|search|show|list)/i,
+      /^(hello|hi|hey|howdy|greetings|good morning|good afternoon|good evening)/i,
+      /^(what|who|when|how|why|where)/i,
+      /^(help|support|info|information|about|contact|assistance)/i,
+      /^(yes|no|ok|okay|sure|thanks|thank you|please|welcome)/i,
+      /^(animal|wildlife|species|conservation|organization|find|search|show|list|tell|give)/i,
+      /^(cool|nice|awesome|great|wow|amazing|interesting)/i,
+      /^(sorry|excuse me|pardon)/i,
       /^[0-9]+$/, // Just numbers
+      /^.{1,2}$/, // Very short inputs (1-2 characters)
     ],
 
     nonAnimalInputs: [
-      /^(hello|hi|hey|what|who|when|how|why|help|support|info|about|contact)/i,
-      /^(yes|no|ok|okay|sure|thanks|thank you|please)/i,
-      /^(location|where|place|city|state|country)/i,
-      /^(find|search|show|list|give|tell|get)/i,
+      /^(hello|hi|hey|howdy|greetings|good morning|good afternoon|good evening)/i,
+      /^(what|who|when|how|why|where)/i,
+      /^(help|support|info|information|about|contact|assistance)/i,
+      /^(yes|no|ok|okay|sure|thanks|thank you|please|welcome)/i,
+      /^(location|where|place|city|state|country|address)/i,
+      /^(find|search|show|list|give|tell|get|display)/i,
+      /^(cool|nice|awesome|great|wow|amazing|interesting)/i,
+      /^(sorry|excuse me|pardon)/i,
+      /^(back|go back|return|restart|start over)/i,
       /^[0-9]+$/, // Just numbers
+      /^.{1,2}$/, // Very short inputs (1-2 characters)
     ],
 
     locationIndicators: [
@@ -116,6 +134,11 @@ export function createCountryPattern(): RegExp {
 export function createStatePattern(): RegExp {
   const states = CONFIG.locations.usStates.join('|');
   return new RegExp(`^(${states})$`, 'i');
+}
+
+export function createProvincePattern(): RegExp {
+  const provinces = CONFIG.locations.canadianProvinces.join('|');
+  return new RegExp(`^(${provinces})$`, 'i');
 }
 
 export function createAnimalPattern(): RegExp {

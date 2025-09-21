@@ -15,12 +15,13 @@ import {
   CONFIG,
   createCountryPattern,
   createStatePattern,
+  createProvincePattern,
   createAnimalPattern,
   createAnimalDescriptivePattern
 } from '@/lib/config';
 
 // Simple in-memory session storage (in production, use Redis or database)
-const sessions = new Map<string, { location?: Location, species?: Species[], step: 'location' | 'animal' }>();
+const sessions = new Map<string, { location?: Location, species?: Species[], step: 'location' | 'animal' | 'completed' }>();
 
 
 export async function POST(request: NextRequest) {
@@ -37,13 +38,23 @@ export async function POST(request: NextRequest) {
     let session = sessions.get(sessionId) || { step: 'location' };
     sessions.set(sessionId, session);
 
+    // If session is completed (after poem), restart on any new input
+    if (session.step === 'completed') {
+      console.log('Session completed, restarting for new conversation');
+      session.step = 'location';
+      delete session.location;
+      delete session.species;
+      sessions.set(sessionId, session);
+    }
+
     // Check if user is providing a new location while in animal selection mode
     if (session.step === 'animal' && session.location) {
       // Simple heuristic: if the message looks like a location, reset to location step
       const locationIndicators = [
         ...CONFIG.patterns.locationIndicators,
         createCountryPattern(),
-        createStatePattern()
+        createStatePattern(),
+        createProvincePattern()
       ];
 
       const isLocationInput = locationIndicators.some(pattern => pattern.test(message.trim()));
@@ -115,7 +126,16 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Pattern 5: City name only - case insensitive (but be more selective)
+      // Pattern 5: Canadian province names - dynamic pattern from config
+      if (!locationQuery) {
+        const provincePattern = createProvincePattern();
+        const provinceMatch = message.match(provincePattern);
+        if (provinceMatch) {
+          locationQuery = provinceMatch[1];
+        }
+      }
+
+      // Pattern 6: City name only - case insensitive (but be more selective)
       if (!locationQuery) {
         const cityMatch = message.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*)$/i);
         if (cityMatch &&
@@ -136,7 +156,7 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Pattern 6: Any reasonable location string (fallback, but more restrictive)
+      // Pattern 7: Any reasonable location string (fallback, but more restrictive)
       if (!locationQuery &&
           message.trim().length > CONFIG.validation.minLocationLength &&
           message.trim().length < CONFIG.validation.maxLocationLength &&
@@ -183,7 +203,7 @@ export async function POST(request: NextRequest) {
             response += `- ${animal.commonName}${status}\n`;
           });
 
-          response += `\nType an animal name to find conservation organizations.`;
+          response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
 
           return NextResponse.json({ response });
         }
@@ -215,20 +235,31 @@ export async function POST(request: NextRequest) {
             : '';
           response += `- **${animal.commonName}**${status}\n`;
         });
-        response += `\nType the name of one of these animals to find conservation organizations.`;
+        response += `\n**⚠️ You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations.`;
         return NextResponse.json({ response });
       }
 
       let selectedAnimal: string | undefined;
       let matchedSpecies: Species | undefined;
 
-      // STRICT matching: Only accept animals from the species list we provided
-      // First, try exact matches against the actual species we found for this location
+      // FLEXIBLE matching: Accept animals from the species list with various input formats
+      // Normalize the user input for better matching
+      const normalizedMessage = lowerMessage.trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
       for (const s of species) {
         const commonNameLower = s.commonName.toLowerCase();
         const scientificNameLower = s.scientificName.toLowerCase();
+        const normalizedCommonName = commonNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedScientificName = scientificNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 
-        // Exact match on full name
+        // Exact match on normalized names
+        if (normalizedMessage === normalizedCommonName || normalizedMessage === normalizedScientificName) {
+          selectedAnimal = s.commonName;
+          matchedSpecies = s;
+          break;
+        }
+
+        // Exact match on original lowercase (fallback)
         if (lowerMessage.trim() === commonNameLower || lowerMessage.trim() === scientificNameLower) {
           selectedAnimal = s.commonName;
           matchedSpecies = s;
@@ -292,14 +323,15 @@ export async function POST(request: NextRequest) {
           response += `- Contact your state wildlife department\n- Search for local conservation groups\n\nThese can help you learn how to protect ${selectedAnimal}.`;
         }
 
-        // Keep session data for potential follow-up (poetry generation)
-        // Session will be reset on next location input
+        // Mark session as completed - next input will restart
+        session.step = 'completed';
+        sessions.set(sessionId, session);
 
         return NextResponse.json({ response });
       } else {
         // Animal not recognized, show available options from the original list ONLY
         if (species.length > 0) {
-          let response = `❌ **That animal wasn't found in your area.**\n\nPlease choose from these animals found near ${session.location.city || session.location.state || session.location.country}:\n\n`;
+          let response = `❌ **"${message}" is not valid.**\n\n**You MUST choose from this exact list** of animals found near ${session.location.city || session.location.state || session.location.country}:\n\n`;
           species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
