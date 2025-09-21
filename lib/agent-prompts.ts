@@ -1,3 +1,9 @@
+
+
+
+
+
+
 export const WILDLIFE_DISCOVERY_AGENT_PROMPT = `You are a wildlife discovery agent that helps users find local wildlife in their area. When given a location, you should:
 
 1. Use real-time data from iNaturalist and GBIF APIs to find species
