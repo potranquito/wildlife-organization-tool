@@ -1,0 +1,25 @@
+{
+  "buildCommand": "pnpm build",
+  "devCommand": "pnpm dev",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "functions": {
+    "app/api/chat/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/poem/route.ts": {
+      "maxDuration": 30
+    }
+  },
+  "env": {
+    "MIN_LOADING_TIME": "5000",
+    "POEM_DELAY": "5000",
+    "MAX_DISPLAYED_SPECIES": "8",
+    "MAX_DISPLAYED_ORGANIZATIONS": "5",
+    "MIN_LOCATION_LENGTH": "2",
+    "MAX_LOCATION_LENGTH": "50",
+    "MAX_VERY_LONG_MESSAGE": "100",
+    "MIN_ANIMAL_NAME_LENGTH": "3"
+  }
+}
