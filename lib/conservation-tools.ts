@@ -176,7 +176,16 @@ Provide real species that exist in this location based on current biodiversity d
 
   } catch (error) {
     console.error('Dynamic species lookup error:', error);
-    // Fallback: return empty array, let system show appropriate message
+
+    // Fallback: return predefined species for common locations
+    const fallbackSpecies = getFallbackSpeciesForLocation(location);
+    if (fallbackSpecies.length > 0) {
+      const locationName = location.city || location.state || location.country || 'this location';
+      console.log(`Using fallback species data for ${locationName}`);
+      return fallbackSpecies;
+    }
+
+    // Last resort: return empty array, let system show appropriate message
     return [];
   }
 }
@@ -273,6 +282,93 @@ function removeDuplicateSpecies(species: Species[]): Species[] {
   }
 
   return Array.from(uniqueSpeciesMap.values());
+}
+
+function getFallbackSpeciesForLocation(location: Location): Species[] {
+  const locationName = location.displayName.toLowerCase();
+  const city = location.city?.toLowerCase() || '';
+  const state = location.state?.toLowerCase() || '';
+  const country = location.country?.toLowerCase() || '';
+
+  // Miami/South Florida fallback
+  if (city.includes('miami') || locationName.includes('miami') ||
+      locationName.includes('south florida') || locationName.includes('florida keys')) {
+    return [
+      { id: 'miami-1', commonName: 'West Indian Manatee', scientificName: 'Trichechus manatus', conservationStatus: 'Vulnerable', source: 'Fallback' },
+      { id: 'miami-2', commonName: 'American Alligator', scientificName: 'Alligator mississippiensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'miami-3', commonName: 'Green Sea Turtle', scientificName: 'Chelonia mydas', conservationStatus: 'Endangered', source: 'Fallback' },
+      { id: 'miami-4', commonName: 'Roseate Spoonbill', scientificName: 'Platalea ajaja', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'miami-5', commonName: 'Florida Panther', scientificName: 'Puma concolor coryi', conservationStatus: 'Endangered', source: 'Fallback' },
+      { id: 'miami-6', commonName: 'Great Egret', scientificName: 'Ardea alba', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'miami-7', commonName: 'Eastern Coral Snake', scientificName: 'Micrurus fulvius', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'miami-8', commonName: 'Green Anole', scientificName: 'Anolis carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' }
+    ];
+  }
+
+  // New York/NYC fallback
+  if (city.includes('new york') || locationName.includes('new york') ||
+      city.includes('nyc') || locationName.includes('manhattan')) {
+    return [
+      { id: 'nyc-1', commonName: 'Eastern Gray Squirrel', scientificName: 'Sciurus carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-2', commonName: 'Red-tailed Hawk', scientificName: 'Buteo jamaicensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-3', commonName: 'Northern Cardinal', scientificName: 'Cardinalis cardinalis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-4', commonName: 'White-tailed Deer', scientificName: 'Odocoileus virginianus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-5', commonName: 'American Robin', scientificName: 'Turdus migratorius', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-6', commonName: 'Eastern Box Turtle', scientificName: 'Terrapene carolina', conservationStatus: 'Vulnerable', source: 'Fallback' },
+      { id: 'nyc-7', commonName: 'American Bullfrog', scientificName: 'Lithobates catesbeianus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'nyc-8', commonName: 'Red Fox', scientificName: 'Vulpes vulpes', conservationStatus: 'Least Concern', source: 'Fallback' }
+    ];
+  }
+
+  // Los Angeles/California fallback
+  if (city.includes('los angeles') || city.includes('la') ||
+      locationName.includes('los angeles') ||
+      (state.includes('california') && (city.includes('angeles') || city.includes('hollywood')))) {
+    return [
+      { id: 'la-1', commonName: 'California Condor', scientificName: 'Gymnogyps californianus', conservationStatus: 'Critically Endangered', source: 'Fallback' },
+      { id: 'la-2', commonName: 'Mountain Lion', scientificName: 'Puma concolor', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'la-3', commonName: 'Desert Tortoise', scientificName: 'Gopherus agassizii', conservationStatus: 'Vulnerable', source: 'Fallback' },
+      { id: 'la-4', commonName: 'California Sea Lion', scientificName: 'Zalophus californianus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'la-5', commonName: 'Western Bluebird', scientificName: 'Sialia mexicana', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'la-6', commonName: 'California Newt', scientificName: 'Taricha torosa', conservationStatus: 'Near Threatened', source: 'Fallback' },
+      { id: 'la-7', commonName: 'Pacific Gopher Snake', scientificName: 'Pituophis catenifer catenifer', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'la-8', commonName: 'Island Fox', scientificName: 'Urocyon littoralis', conservationStatus: 'Near Threatened', source: 'Fallback' }
+    ];
+  }
+
+  // Seattle/Pacific Northwest fallback
+  if (city.includes('seattle') || locationName.includes('seattle') ||
+      locationName.includes('pacific northwest') ||
+      (state.includes('washington') && city.includes('seattle'))) {
+    return [
+      { id: 'seattle-1', commonName: 'Black-tailed Deer', scientificName: 'Odocoileus hemionus columbianus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-2', commonName: 'American Beaver', scientificName: 'Castor canadensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-3', commonName: 'Bald Eagle', scientificName: 'Haliaeetus leucocephalus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-4', commonName: 'Great Blue Heron', scientificName: 'Ardea herodias', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-5', commonName: 'Pacific Tree Frog', scientificName: 'Pseudacris regilla', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-6', commonName: 'Northwestern Garter Snake', scientificName: 'Thamnophis ordinoides', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-7', commonName: 'Townsend\'s Mole', scientificName: 'Scapanus townsendii', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'seattle-8', commonName: 'Barred Owl', scientificName: 'Strix varia', conservationStatus: 'Least Concern', source: 'Fallback' }
+    ];
+  }
+
+  // Toronto/Canada fallback
+  if (city.includes('toronto') || locationName.includes('toronto') ||
+      (country.includes('canada') && city.includes('toronto'))) {
+    return [
+      { id: 'toronto-1', commonName: 'Eastern Gray Squirrel', scientificName: 'Sciurus carolinensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-2', commonName: 'Red-tailed Hawk', scientificName: 'Buteo jamaicensis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-3', commonName: 'Northern Cardinal', scientificName: 'Cardinalis cardinalis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-4', commonName: 'American Toad', scientificName: 'Anaxyrus americanus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-5', commonName: 'Common Raccoon', scientificName: 'Procyon lotor', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-6', commonName: 'Eastern Garter Snake', scientificName: 'Thamnophis sirtalis', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-7', commonName: 'Black-capped Chickadee', scientificName: 'Poecile atricapillus', conservationStatus: 'Least Concern', source: 'Fallback' },
+      { id: 'toronto-8', commonName: 'White-tailed Deer', scientificName: 'Odocoileus virginianus', conservationStatus: 'Least Concern', source: 'Fallback' }
+    ];
+  }
+
+  // No fallback data available
+  return [];
 }
 
 async function enhanceWithIUCNStatus(species: Species[]): Promise<Species[]> {

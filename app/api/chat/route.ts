@@ -9,6 +9,12 @@ import {
   type Location,
   type Species
 } from '@/lib/conservation-tools';
+import {
+  parseUserLocation,
+  handleLocationDisambiguation,
+  type LocationParsingResult,
+  type DisambiguationOption
+} from '@/lib/location-agent';
 import { WILDLIFE_POETRY_AGENT_PROMPT } from '@/lib/agent-prompts';
 import { findPoemByAnimal, getRandomPoem } from '@/lib/animal-poems-rag';
 import {
@@ -21,7 +27,12 @@ import {
 } from '@/lib/config';
 
 // Simple in-memory session storage (in production, use Redis or database)
-const sessions = new Map<string, { location?: Location, species?: Species[], step: 'location' | 'animal' | 'completed' }>();
+const sessions = new Map<string, {
+  location?: Location,
+  species?: Species[],
+  step: 'location' | 'disambiguation' | 'animal' | 'completed',
+  disambiguationOptions?: DisambiguationOption[]
+}>();
 
 
 export async function POST(request: NextRequest) {
@@ -44,6 +55,7 @@ export async function POST(request: NextRequest) {
       session.step = 'location';
       delete session.location;
       delete session.species;
+      delete session.disambiguationOptions;
       sessions.set(sessionId, session);
     }
 
@@ -64,154 +76,130 @@ export async function POST(request: NextRequest) {
         session.step = 'location';
         delete session.location;
         delete session.species;
+        delete session.disambiguationOptions;
         sessions.set(sessionId, session);
       }
     }
 
-    // AGENT 1: Location → Animal List
-    if (session.step === 'location' || !session.location) {
-      // Enhanced location parsing with guardrails
-      let locationQuery: string | null = null;
-      console.log(`Raw message: "${message}"`);
-      console.log(`Lower message: "${lowerMessage}"`);
+    // DISAMBIGUATION STEP: Handle user selection from disambiguation options
+    if (session.step === 'disambiguation' && session.disambiguationOptions) {
+      const selectionMatch = message.match(/^(\d+)$/);
+      if (selectionMatch) {
+        const optionIndex = parseInt(selectionMatch[1]) - 1;
 
-      // Guardrail: Check for non-location inputs first
-      const animalPattern = createAnimalPattern();
-      const nonLocationInputs = [
-        ...CONFIG.patterns.nonLocationInputs,
-        animalPattern,
-        new RegExp(`^.{${CONFIG.validation.maxVeryLongMessage},}$`) // Very long messages are probably not locations
-      ];
+        if (optionIndex >= 0 && optionIndex < session.disambiguationOptions.length) {
+          const selectedOption = session.disambiguationOptions[optionIndex];
+          const result = await handleLocationDisambiguation(selectedOption);
 
-      const isNonLocationInput = nonLocationInputs.some(pattern => pattern.test(message.trim()));
+          if (result.success && result.location) {
+            // Get species list from live data sources
+            let species = await findSpeciesByLocation(result.location);
 
-      if (isNonLocationInput) {
-        const response = `🌍 **Please provide your location to get started!**\n\nI need to know where you're located to find local wildlife and conservation organizations. You can enter:\n\n• **City and state**: "Miami, Florida"\n• **Just a city**: "Seattle" \n• **Just a state**: "California"\n• **A country**: "Canada"\n\nTry entering your location now!`;
-        return NextResponse.json({ response });
-      }
+            // Save location, species, and move to next step
+            session.location = result.location;
+            session.species = species;
+            session.step = 'animal';
+            delete session.disambiguationOptions;
+            sessions.set(sessionId, session);
 
-      // Pattern 1: "I am in Las Vegas" or "I live in Denver, Colorado"
-      const locationPattern1 = message.match(/(?:i\s+(?:am|live)\s+in|in|near|around|at|from)\s+([^.!?]+)/i);
-      if (locationPattern1) {
-        locationQuery = locationPattern1[1].trim();
-        console.log(`Pattern 1 matched: "${locationQuery}"`);
-      }
+            // If no species found, provide a helpful message
+            if (species.length === 0) {
+              const response = `🚫 **Unable to find wildlife data for ${result.location.displayName}**\n\nThis could be due to:\n• **API connectivity issues** (OpenAI services may be temporarily unavailable)\n• **Limited coverage** for this specific location\n• **Server overload** during peak usage\n\n💡 **Try these alternatives:**\n• Enter a **major nearby city** (e.g., "Miami, Florida" instead of just "Miami")\n• Use a **state or province name** (e.g., "California", "Ontario")\n• Try again in a few minutes\n\nExamples: "New York City", "Toronto, Canada", "Los Angeles"`;
+              return NextResponse.json({ response });
+            }
 
-      // Pattern 2: City, State format (case insensitive) - "Las Vegas, Nevada" or "miami, florida"
-      if (!locationQuery) {
-        // Only match if there's a clear separator (comma or multiple words suggesting city + state)
-        const cityStateMatch = message.match(/([A-Za-z]+(?:\s+[A-Za-z]+)*),\s*([A-Za-z]+(?:\s+[A-Za-z]+)*)/i);
-        if (cityStateMatch) {
-          locationQuery = `${cityStateMatch[1]}, ${cityStateMatch[2]}`;
-          console.log(`Pattern 2 matched: "${locationQuery}"`);
-        }
-      }
+            // Display species list
+            const hasEndangeredSpecies = species.some(s => s.conservationStatus &&
+              ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus));
 
-      // Pattern 3: Country names - dynamic pattern from config
-      if (!locationQuery) {
-        const countryPattern = createCountryPattern();
-        const countryMatch = message.match(countryPattern);
-        if (countryMatch) {
-          locationQuery = countryMatch[1];
-          console.log(`Pattern 3 matched: "${locationQuery}"`);
-        }
-      }
+            const locationDisplayName = result.location.city || result.location.state || result.location.country || 'this location';
+            let response = hasEndangeredSpecies
+              ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
+              : `**Wildlife near ${locationDisplayName}:**\n\n`;
 
-      // Pattern 4: State names only - dynamic pattern from config
-      if (!locationQuery) {
-        const statePattern = createStatePattern();
-        const stateMatch = message.match(statePattern);
-        if (stateMatch) {
-          locationQuery = stateMatch[1];
-        }
-      }
+            species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
+              const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
+                ? ` (${animal.conservationStatus})`
+                : '';
+              response += `- ${animal.commonName}${status}\n`;
+            });
 
-      // Pattern 5: Canadian province names - dynamic pattern from config
-      if (!locationQuery) {
-        const provincePattern = createProvincePattern();
-        const provinceMatch = message.match(provincePattern);
-        if (provinceMatch) {
-          locationQuery = provinceMatch[1];
-        }
-      }
+            response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
 
-      // Pattern 6: City name only - case insensitive (but be more selective)
-      if (!locationQuery) {
-        const cityMatch = message.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*)$/i);
-        if (cityMatch &&
-            cityMatch[1].length > CONFIG.validation.minLocationLength &&
-            cityMatch[1].length < CONFIG.validation.maxLocationLength) {
-          // Additional check: make sure it's not a common non-location word
-          const allExcludedWords = [
-            ...CONFIG.animals.excludedWords,
-            ...CONFIG.animals.commonNames
-          ];
-          const words = cityMatch[1].toLowerCase().split(' ');
-          const isAnimalName = words.some((word: string) => allExcludedWords.includes(word)) ||
-                              createAnimalDescriptivePattern().test(cityMatch[1]);
-
-          if (!isAnimalName) {
-            locationQuery = cityMatch[1];
-          }
-        }
-      }
-
-      // Pattern 7: Any reasonable location string (fallback, but more restrictive)
-      if (!locationQuery &&
-          message.trim().length > CONFIG.validation.minLocationLength &&
-          message.trim().length < CONFIG.validation.maxLocationLength &&
-          /^[A-Za-z\s,.-]+$/.test(message.trim())) {
-        // Only if it contains geographical indicators or has the right structure
-        if (message.includes(',') || /\b(city|town|village|county|state|province|country)\b/i.test(message)) {
-          locationQuery = message.trim();
-        }
-      }
-
-      if (locationQuery) {
-        console.log(`Selected location query: "${locationQuery}"`);
-        const location = await geocodeLocation(locationQuery);
-
-        if (location) {
-          // Get species list from live data sources
-          let species = await findSpeciesByLocation(location);
-
-          // Save location, species, and move to next step
-          session.location = location;
-          session.species = species;
-          session.step = 'animal';
-          sessions.set(sessionId, session);
-
-          // If no species found, provide a helpful message
-          if (species.length === 0) {
-            const response = `I couldn't find any wildlife data for ${location.displayName} at the moment. This could be due to limited data coverage in this area or temporary API issues. Please try a nearby major city or check back later.`;
+            return NextResponse.json({ response });
+          } else {
+            const response = `❌ **Unable to process that selection.** Please try entering your location again.\n\nUse formats like:\n• "Miami, Florida"\n• "Toronto, Canada"\n• "California"`;
+            session.step = 'location';
+            delete session.disambiguationOptions;
+            sessions.set(sessionId, session);
             return NextResponse.json({ response });
           }
-
-          // Check if we got endangered species from IUCN vs general wildlife
-          const hasEndangeredSpecies = species.some(s => s.conservationStatus &&
-            ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus));
-
-          const locationDisplayName = location.city || location.state || location.country || 'this location';
-          let response = hasEndangeredSpecies
-            ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
-            : `**Wildlife near ${locationDisplayName}:**\n\n`;
-
-          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
-            const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
-              ? ` (${animal.conservationStatus})`
-              : '';
-            response += `- ${animal.commonName}${status}\n`;
-          });
-
-          response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
-
-          return NextResponse.json({ response });
         }
       }
 
-      // Ask for location if not provided
-      const response = `🌍 **I need your location to find local wildlife!**\n\nPlease enter your location in one of these formats:\n\n• **City and state**: "Miami, Florida"\n• **Just a city**: "Seattle" \n• **Just a state**: "California"\n• **A country**: "Canada"\n\nTry adding a location please!`;
+      // Invalid selection number
+      const response = `❌ **Please select a valid option number.**\n\n${formatDisambiguationMessage(session.disambiguationOptions)}`;
       return NextResponse.json({ response });
+    }
+
+    // AGENT 1: Location → Animal List (Enhanced with disambiguation)
+    if (session.step === 'location' || !session.location) {
+      console.log(`Processing location input: "${message}"`);
+
+      // Use the new enhanced location agent
+      const locationResult = await parseUserLocation(message);
+
+      if (locationResult.success && locationResult.location) {
+        // Get species list from live data sources
+        let species = await findSpeciesByLocation(locationResult.location);
+
+        // Save location, species, and move to next step
+        session.location = locationResult.location;
+        session.species = species;
+        session.step = 'animal';
+        sessions.set(sessionId, session);
+
+        // If no species found, provide a helpful message
+        if (species.length === 0) {
+          const response = `🚫 **Unable to find wildlife data for ${locationResult.location.displayName}**\n\nThis could be due to:\n• **API connectivity issues** (OpenAI services may be temporarily unavailable)\n• **Limited coverage** for this specific location\n• **Server overload** during peak usage\n\n💡 **Try these alternatives:**\n• Enter a **major nearby city** (e.g., "Miami, Florida" instead of just "Miami")\n• Use a **state or province name** (e.g., "California", "Ontario")\n• Try again in a few minutes\n\nExamples: "New York City", "Toronto, Canada", "Los Angeles"`;
+          return NextResponse.json({ response });
+        }
+
+        // Display species list
+        const hasEndangeredSpecies = species.some(s => s.conservationStatus &&
+          ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus));
+
+        const locationDisplayName = locationResult.location.city || locationResult.location.state || locationResult.location.country || 'this location';
+        let response = hasEndangeredSpecies
+          ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
+          : `**Wildlife near ${locationDisplayName}:**\n\n`;
+
+        species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
+          const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
+            ? ` (${animal.conservationStatus})`
+            : '';
+          response += `- ${animal.commonName}${status}\n`;
+        });
+
+        response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
+
+        return NextResponse.json({ response });
+
+      } else if (locationResult.needsDisambiguation && locationResult.disambiguationOptions) {
+        // Location needs disambiguation
+        session.step = 'disambiguation';
+        session.disambiguationOptions = locationResult.disambiguationOptions;
+        sessions.set(sessionId, session);
+
+        const response = formatDisambiguationMessage(locationResult.disambiguationOptions);
+        return NextResponse.json({ response });
+
+      } else {
+        // Location parsing failed
+        const errorMessage = locationResult.errorMessage || 'Could not understand your location input.';
+        const response = `🌍 **${errorMessage}**\n\nPlease enter your location in one of these formats:\n\n• **City and state**: "Miami, Florida"\n• **City and country**: "Toronto, Canada"\n• **Just a city**: "Seattle"\n• **Just a state**: "California"\n• **A country**: "Canada"\n\nTry entering your location now!`;
+        return NextResponse.json({ response });
+      }
     }
 
     // AGENT 2: Animal Selection → Organizations
@@ -357,4 +345,18 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to format disambiguation messages
+function formatDisambiguationMessage(options: DisambiguationOption[]): string {
+  let message = `🌍 **I found multiple places with that name. Which one did you mean?**\n\n`;
+
+  options.forEach((option, index) => {
+    message += `**${index + 1}.** ${option.displayName}\n`;
+    message += `   ${option.description}\n\n`;
+  });
+
+  message += `Please reply with the **number** (1, 2, etc.) of your intended location.`;
+
+  return message;
 }
