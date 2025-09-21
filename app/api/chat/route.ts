@@ -94,8 +94,12 @@ export async function POST(request: NextRequest) {
         const cityMatch = message.match(/^([A-Za-z]+(?:\s+[A-Za-z]+)*)$/i);
         if (cityMatch && cityMatch[1].length > 2 && cityMatch[1].length < 50) {
           // Additional check: make sure it's not a common non-location word
-          const commonWords = ['hello', 'help', 'animal', 'wildlife', 'species', 'conservation', 'organization', 'find', 'search', 'show', 'list', 'eagle', 'bear', 'wolf', 'deer', 'fox', 'owl', 'hawk', 'salmon', 'turtle', 'frog', 'bat', 'snake', 'lizard', 'butterfly', 'crane', 'duck', 'rabbit', 'squirrel'];
-          if (!commonWords.includes(cityMatch[1].toLowerCase())) {
+          const commonWords = ['hello', 'help', 'animal', 'wildlife', 'species', 'conservation', 'organization', 'find', 'search', 'show', 'list', 'eagle', 'bear', 'wolf', 'deer', 'fox', 'owl', 'hawk', 'salmon', 'turtle', 'frog', 'bat', 'snake', 'lizard', 'butterfly', 'crane', 'duck', 'rabbit', 'squirrel', 'skunk', 'raccoon', 'beaver', 'otter', 'chipmunk', 'mouse', 'rat', 'vole', 'shrew', 'mole', 'weasel', 'marten', 'fisher', 'badger', 'porcupine', 'woodchuck', 'muskrat', 'opossum', 'moose', 'elk', 'caribou', 'bison', 'sheep', 'goat', 'pika', 'hare', 'bobcat', 'lynx', 'cougar', 'coyote', 'wolverine', 'seal', 'whale', 'dolphin', 'porpoise', 'walrus', 'manatee', 'dugong'];
+          const words = cityMatch[1].toLowerCase().split(' ');
+          const isAnimalName = words.some(word => commonWords.includes(word)) ||
+                              /\b(striped|spotted|common|american|european|eastern|western|northern|southern|red|black|white|brown|gray|grey|blue|green|yellow|great|little|small|large|giant)\s+(skunk|fox|deer|bear|wolf|eagle|hawk|owl|duck|goose|frog|toad|turtle|snake|lizard|salamander|newt|rabbit|hare|squirrel|chipmunk|mouse|rat|bat|seal|whale|dolphin|otter)\b/i.test(cityMatch[1]);
+
+          if (!isAnimalName) {
             locationQuery = cityMatch[1];
           }
         }

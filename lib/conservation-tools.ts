@@ -723,6 +723,12 @@ async function searchConservationOrganizations(
   location: Location
 ): Promise<Organization[]> {
   try {
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
+      return [];
+    }
+
     // Determine the species group for broader search
     const speciesGroup = getSpeciesGroup(species.commonName);
     const locationName = location.city || location.state || location.country || 'local area';

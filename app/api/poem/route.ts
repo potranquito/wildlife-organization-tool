@@ -6,6 +6,14 @@ import { findPoemByAnimal, getRandomPoem } from '@/lib/animal-poems-rag';
 
 export async function POST(request: NextRequest) {
   try {
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
+      return NextResponse.json({
+        error: 'Service temporarily unavailable. Please try again later.'
+      }, { status: 503 });
+    }
+
     const { animal } = await request.json();
 
     if (!animal) {
