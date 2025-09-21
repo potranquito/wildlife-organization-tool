@@ -88,6 +88,18 @@ export default function Home() {
       return protectMatch[1].trim();
     }
 
+    // Look for pattern in the closing message like "help protect [Animal Name]"
+    const helpProtectMatch = text.match(/help protect\s+([^.]+)\./);
+    if (helpProtectMatch) {
+      return helpProtectMatch[1].trim();
+    }
+
+    // Look for animal name at the start of a response (fallback)
+    const responseMatch = text.match(/\*\*([A-Za-z\s]+) Conservation Organizations:\*\*/);
+    if (responseMatch) {
+      return responseMatch[1].trim();
+    }
+
     return null;
   };
 
