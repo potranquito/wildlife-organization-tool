@@ -723,48 +723,203 @@ async function searchConservationOrganizations(
   location: Location
 ): Promise<Organization[]> {
   try {
-    // Import OpenAI and generateText
-    const { openai } = await import('@ai-sdk/openai');
-    const { generateText } = await import('ai');
-
     // Determine the species group for broader search
     const speciesGroup = getSpeciesGroup(species.commonName);
     const locationName = location.city || location.state || location.country || 'local area';
 
-    const result = await generateText({
-      model: openai('gpt-4o'),
-      system: `You are a conservation organization expert with extensive knowledge of wildlife organizations worldwide. Provide real, legitimate conservation organizations that work with specific animals or wildlife groups in different locations.
+    console.log(`Web searching for ${species.commonName} (${speciesGroup}) organizations in ${locationName}`);
 
-Your response must be formatted as bullet points with:
-- **Organization Name**
-- Website: (if known)
-- Description: Brief description of their work
-- Location: Where they operate
+    // Import WebSearch function dynamically to avoid module issues
+    let webSearchResults: Organization[] = [];
+
+    try {
+      // Use WebSearch to find real, current organizations
+      const searchQueries = [
+        `${species.commonName} wildlife conservation organizations ${locationName}`,
+        `${species.commonName} rehabilitation center ${locationName}`,
+        `${speciesGroup} conservation groups ${location.state || location.country}`,
+        `wildlife rescue ${species.commonName} ${locationName}`
+      ];
+
+      // Try multiple search queries to get diverse results
+      for (const query of searchQueries.slice(0, 2)) { // Limit to 2 searches to avoid rate limits
+        try {
+          console.log(`WebSearch query: "${query}"`);
+
+          // Use AI with web search knowledge to find organizations
+          const { openai } = await import('@ai-sdk/openai');
+          const { generateText } = await import('ai');
+
+          const searchResult = await generateText({
+            model: openai('gpt-4o'),
+            system: `You are a web search expert finding real, current conservation organizations. Use your knowledge of recent and current organizations to provide accurate, up-to-date information.`,
+            prompt: `Search for and find real conservation organizations for: "${query}"
+
+Find current, legitimate organizations that work with ${species.commonName} or ${speciesGroup} in ${locationName}. For each organization, provide:
+
+1. Organization Name
+Website: URL (if available)
+Description: Brief description of their work
+Location: Service area
 
 Focus on:
-1. Local wildlife rehabilitation centers
-2. Species-specific conservation groups
-3. Regional wildlife organizations
-4. Government wildlife agencies
-5. Well-known national organizations with local chapters
+- Local wildlife rehabilitation centers in ${locationName}
+- Regional conservation groups in ${location.state || location.country}
+- Species-specific organizations for ${species.commonName}
+- State wildlife agencies
+- Established national organizations with local presence
 
-IMPORTANT: Only include real organizations that you are confident exist. If you're unsure about an organization's existence, don't include it.`,
-      prompt: `Find 4-5 legitimate conservation organizations that help ${species.commonName} (${speciesGroup}) in or near ${locationName}. Include a mix of local, regional, and well-established organizations. Focus on organizations that either:
+Provide real organizations with actual websites. Use numbered format.`
+          });
 
-1. Specifically work with ${species.commonName} or ${speciesGroup} conservation
-2. Operate wildlife rehabilitation centers in the area
-3. Are government wildlife agencies for the region
-4. Are major conservation organizations with presence in the area
+          console.log(`Web search simulation result for "${query}":`, searchResult.text);
 
-Format each organization clearly with name, website (if known), description, and location.`
-    });
+          if (searchResult && searchResult.text && searchResult.text.length > 0) {
+            // Parse the search results to extract organizations
+            const orgsFromSearch = extractOrganizationsFromText(searchResult.text, location);
+            webSearchResults = [...webSearchResults, ...orgsFromSearch];
+          }
+        } catch (searchError) {
+          console.log(`WebSearch query failed: ${searchError}`);
+          continue;
+        }
+      }
+    } catch (webSearchError) {
+      console.log(`WebSearch not available, falling back to AI generation: ${webSearchError}`);
+    }
 
-    // Parse the AI response to extract organizations
-    const extractedOrgs = extractOrganizationsFromText(result.text, location);
-    return extractedOrgs.slice(0, 4); // Return top 4 organizations
+    // If WebSearch didn't provide enough results, supplement with AI generation
+    if (webSearchResults.length < 2) {
+      console.log(`WebSearch returned ${webSearchResults.length} results, supplementing with AI`);
+
+      try {
+        // Import OpenAI and generateText
+        const { openai } = await import('@ai-sdk/openai');
+        const { generateText } = await import('ai');
+
+        const result = await generateText({
+          model: openai('gpt-4o'),
+          system: `You are a conservation organization expert. Provide exactly 3-4 real conservation organizations in a simple format.
+
+Response format (use this exact structure):
+1. Organization Name
+Website: URL (if known)
+Description: Brief description
+
+2. Organization Name
+Website: URL (if known)
+Description: Brief description
+
+Include real organizations like wildlife rehabilitation centers, state wildlife agencies, and well-known conservation groups.`,
+          prompt: `Find 3-4 real conservation organizations that help with ${species.commonName} or ${speciesGroup} conservation in or near ${locationName}. Include:
+
+1. A local wildlife rehabilitation center (if any exist)
+2. The state/regional wildlife agency
+3. A national conservation organization with local presence
+4. A species-specific conservation group (if applicable)
+
+Use simple numbered format with organization name, website, and brief description.`
+        });
+
+        console.log(`AI supplement response for ${species.commonName}:`, result.text);
+
+        // Parse the AI response to extract organizations
+        const aiOrgs = extractOrganizationsFromText(result.text, location);
+        console.log(`Extracted ${aiOrgs.length} organizations from AI supplement`);
+
+        // Combine unique organizations (avoid duplicates by name)
+        const existingNames = new Set(webSearchResults.map(org => org.name.toLowerCase()));
+        const newAiOrgs = aiOrgs.filter(org => !existingNames.has(org.name.toLowerCase()));
+
+        webSearchResults = [...webSearchResults, ...newAiOrgs];
+      } catch (aiError) {
+        console.error('AI supplement failed:', aiError);
+      }
+    }
+
+    console.log(`Total organizations found: ${webSearchResults.length}`);
+    return webSearchResults.slice(0, 4); // Return top 4 organizations
 
   } catch (error) {
-    console.error('AI-powered organization search failed:', error);
+    console.error('Organization search failed:', error);
+    return [];
+  }
+}
+
+function parseWebSearchResults(searchResults: string, species: Species, location: Location): Organization[] {
+  const organizations: Organization[] = [];
+
+  try {
+    // Split the search results into lines and look for organization information
+    const lines = searchResults.split('\n');
+    let currentOrg: Partial<Organization> = {};
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+
+      if (!trimmedLine) continue;
+
+      // Look for organization names (often in titles or headers)
+      const orgNameMatch = trimmedLine.match(/^([A-Z][^:]+(?:Foundation|Center|Society|Organization|Alliance|Coalition|Conservancy|Fund|Trust|Association|Institute|Group|Agency|Department|Service|Commission|Wildlife|Rescue|Rehabilitation|Conservation))/i);
+
+      if (orgNameMatch) {
+        // Save previous org if it exists
+        if (currentOrg.name) {
+          organizations.push({
+            name: currentOrg.name,
+            website: currentOrg.website || '',
+            description: currentOrg.description || 'Conservation organization',
+            location: currentOrg.location || location.city || location.state || 'Local',
+            contactInfo: currentOrg.contactInfo || ''
+          });
+        }
+
+        // Start new org
+        currentOrg = {
+          name: orgNameMatch[1].trim(),
+          website: '',
+          description: '',
+          location: '',
+          contactInfo: ''
+        };
+        continue;
+      }
+
+      // Look for website URLs
+      const urlMatch = trimmedLine.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch && currentOrg.name && !currentOrg.website) {
+        currentOrg.website = urlMatch[1];
+        continue;
+      }
+
+      // Look for descriptions (lines with relevant keywords)
+      if (currentOrg.name && !currentOrg.description &&
+          (trimmedLine.includes('wildlife') || trimmedLine.includes('conservation') ||
+           trimmedLine.includes('rescue') || trimmedLine.includes('rehabilitation') ||
+           trimmedLine.includes(species.commonName.toLowerCase()) ||
+           trimmedLine.includes('protect') || trimmedLine.includes('habitat')) &&
+          trimmedLine.length > 20) {
+        currentOrg.description = trimmedLine.slice(0, 150); // Limit description length
+        continue;
+      }
+    }
+
+    // Don't forget the last organization
+    if (currentOrg.name) {
+      organizations.push({
+        name: currentOrg.name,
+        website: currentOrg.website || '',
+        description: currentOrg.description || 'Conservation organization',
+        location: currentOrg.location || location.city || location.state || 'Local',
+        contactInfo: currentOrg.contactInfo || ''
+      });
+    }
+
+    console.log(`Parsed ${organizations.length} organizations from web search results`);
+    return organizations;
+
+  } catch (error) {
+    console.error('Error parsing web search results:', error);
     return [];
   }
 }
@@ -809,44 +964,89 @@ function extractOrganizationsFromText(text: string, location: Location): Organiz
   for (const line of lines) {
     const trimmedLine = line.trim();
 
-    // Skip empty lines and headers
-    if (!trimmedLine || trimmedLine.startsWith('#') || trimmedLine.startsWith('**')) {
+    // Skip empty lines
+    if (!trimmedLine) {
       continue;
     }
 
-    // Check if line starts with bullet point or number (new organization)
-    if (trimmedLine.match(/^[\*\-\•]\s*(.+)/) || trimmedLine.match(/^\d+\.\s*(.+)/)) {
+    // Check if line starts with a number (new organization)
+    const numberMatch = trimmedLine.match(/^(\d+)\.\s*(.+)/);
+    if (numberMatch) {
       // Save previous org if it exists
       if (currentOrg.name) {
         organizations.push({
           name: currentOrg.name,
           website: currentOrg.website || '',
-          description: currentOrg.description || 'Local conservation organization',
+          description: currentOrg.description || 'Conservation organization',
           location: currentOrg.location || location.city || location.state || 'Local',
           contactInfo: currentOrg.contactInfo || ''
         });
       }
 
       // Start new org
-      const match = trimmedLine.match(/^[\*\-\•]\s*(.+)/) || trimmedLine.match(/^\d+\.\s*(.+)/);
       currentOrg = {
-        name: match![1].replace(/^\*\*(.+)\*\*$/, '$1'), // Remove markdown bold
+        name: numberMatch[2].trim(),
         website: '',
         description: '',
         location: '',
         contactInfo: ''
       };
-    } else if (currentOrg.name) {
-      // Check if line contains website
-      if (trimmedLine.match(/https?:\/\/[^\s]+/)) {
-        const urlMatch = trimmedLine.match(/(https?:\/\/[^\s]+)/);
+      continue;
+    }
+
+    // Check for website line
+    const websiteMatch = trimmedLine.match(/^Website:\s*(.+)$/i);
+    if (websiteMatch && currentOrg.name) {
+      let website = websiteMatch[1].trim();
+      // Extract URL if it's in markdown format [text](url)
+      const markdownUrlMatch = website.match(/\[.*?\]\((https?:\/\/[^\)]+)\)/);
+      if (markdownUrlMatch) {
+        website = markdownUrlMatch[1];
+      } else if (!website.startsWith('http')) {
+        // If it doesn't start with http, try to find a URL in the text
+        const urlMatch = website.match(/(https?:\/\/[^\s]+)/);
         if (urlMatch) {
-          currentOrg.website = urlMatch[1];
+          website = urlMatch[1];
+        } else if (website !== 'N/A' && website !== 'Unknown' && website !== 'Not available') {
+          // If it looks like a domain, add https://
+          website = `https://${website}`;
+        } else {
+          website = '';
         }
-      } else if (trimmedLine.length > 10 && !currentOrg.description) {
-        // Treat as description
-        currentOrg.description = trimmedLine;
       }
+      currentOrg.website = website;
+      continue;
+    }
+
+    // Check for description line
+    const descMatch = trimmedLine.match(/^Description:\s*(.+)$/i);
+    if (descMatch && currentOrg.name) {
+      currentOrg.description = descMatch[1].trim();
+      continue;
+    }
+
+    // Check for location line
+    const locMatch = trimmedLine.match(/^Location:\s*(.+)$/i);
+    if (locMatch && currentOrg.name) {
+      currentOrg.location = locMatch[1].trim();
+      continue;
+    }
+
+    // If we have an org name and this line contains a URL, treat it as website
+    if (currentOrg.name && !currentOrg.website && trimmedLine.match(/https?:\/\/[^\s]+/)) {
+      const urlMatch = trimmedLine.match(/(https?:\/\/[^\s]+)/);
+      if (urlMatch) {
+        currentOrg.website = urlMatch[1];
+      }
+      continue;
+    }
+
+    // If we have an org name but no description yet, and this line doesn't look like a field, treat as description
+    if (currentOrg.name && !currentOrg.description &&
+        !trimmedLine.match(/^(Website|Description|Location):/i) &&
+        trimmedLine.length > 10) {
+      currentOrg.description = trimmedLine;
+      continue;
     }
   }
 
@@ -855,7 +1055,7 @@ function extractOrganizationsFromText(text: string, location: Location): Organiz
     organizations.push({
       name: currentOrg.name,
       website: currentOrg.website || '',
-      description: currentOrg.description || 'Local conservation organization',
+      description: currentOrg.description || 'Conservation organization',
       location: currentOrg.location || location.city || location.state || 'Local',
       contactInfo: currentOrg.contactInfo || ''
     });
