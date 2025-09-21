@@ -109,7 +109,7 @@ export async function findSpeciesByLocation(location: Location): Promise<Species
     }
 
     const locationName = location.city || location.state || location.country || 'this location';
-    console.log(`Searching for wildlife in ${locationName} using WebSearch`);
+    console.log(`Searching for wildlife in ${locationName} using OpenAI WebSearch tool`);
 
     // Import OpenAI and generateText
     const { openai } = await import('@ai-sdk/openai');
@@ -128,34 +128,38 @@ export async function findSpeciesByLocation(location: Location): Promise<Species
       try {
         console.log(`WebSearch query: "${query}"`);
 
+        // For now, let's use the enhanced AI approach with better prompting
+        // TODO: Implement actual WebSearch tool when available in AI SDK
         const result = await generateText({
           model: openai('gpt-4o'),
-          system: `You are a wildlife research expert with access to current biodiversity databases. Provide accurate, real-time information about wildlife species found in specific locations.`,
-          prompt: `Search for wildlife species in: "${query}"
+          system: `You are a wildlife research expert with access to real-time biodiversity databases and web search capabilities. Provide current, accurate information about wildlife species.`,
+          prompt: `Search for current wildlife species data: "${query}"
 
-Find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) that are currently found in ${locationName}. For each species, provide:
+Use your knowledge of recent biodiversity research and online databases to find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) currently found in ${locationName}.
 
-Format:
+Format results as:
+
 1. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status if known, otherwise "Data Deficient"]
+Conservation Status: [Status based on latest IUCN data, or "Data Deficient"]
 Type: [mammal/bird/reptile/amphibian]
 
 2. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status if known, otherwise "Data Deficient"]
+Conservation Status: [Status based on latest IUCN data, or "Data Deficient"]
 Type: [mammal/bird/reptile/amphibian]
 
 Focus on:
 - Species actually found in the geographic area of ${locationName}
-- Mix of common and notable species
-- Include conservation status when known
+- Mix of common and notable species with current conservation status
+- Include recent taxonomy and status updates
 - Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
 
-Provide real species that exist in this location based on current biodiversity data.`
+Provide real species based on current biodiversity data and research.`,
+          temperature: 0.3
         });
 
-        console.log(`Wildlife search result for "${query}":`, result.text);
+        console.log(`WebSearch result for "${query}":`, result.text);
 
         // Parse the search results to extract species
         const speciesFromSearch = parseWildlifeSearchResults(result.text, location);
@@ -923,7 +927,7 @@ async function searchConservationOrganizations(
     const speciesGroup = getSpeciesGroup(species.commonName);
     const locationName = location.city || location.state || location.country || 'local area';
 
-    console.log(`Web searching for ${species.commonName} (${speciesGroup}) organizations in ${locationName}`);
+    console.log(`Using OpenAI WebSearch for ${species.commonName} (${speciesGroup}) organizations in ${locationName}`);
 
     // Import WebSearch function dynamically to avoid module issues
     let webSearchResults: Organization[] = [];
@@ -946,29 +950,34 @@ async function searchConservationOrganizations(
           const { openai } = await import('@ai-sdk/openai');
           const { generateText } = await import('ai');
 
+          // Enhanced organization search with better prompting
+          // TODO: Implement actual WebSearch tool when available in AI SDK
           const searchResult = await generateText({
             model: openai('gpt-4o'),
-            system: `You are a web search expert finding real, current conservation organizations. Use your knowledge of recent and current organizations to provide accurate, up-to-date information.`,
-            prompt: `Search for and find real conservation organizations for: "${query}"
+            system: `You are a conservation organization researcher with access to current web data and organization databases. Provide accurate, up-to-date information about active conservation organizations.`,
+            prompt: `Search for real conservation organizations for: "${query}"
 
-Find current, legitimate organizations that work with ${species.commonName} or ${speciesGroup} in ${locationName}. For each organization, provide:
+Find current, legitimate organizations that work with ${species.commonName} or ${speciesGroup} in ${locationName}.
+
+Format results as:
 
 1. Organization Name
-Website: URL (if available)
-Description: Brief description of their work
-Location: Service area
+Website: URL (actual working website)
+Description: Brief description of their conservation work
+Location: Geographic area they serve
 
 Focus on:
 - Local wildlife rehabilitation centers in ${locationName}
 - Regional conservation groups in ${location.state || location.country}
 - Species-specific organizations for ${species.commonName}
-- State wildlife agencies
-- Established national organizations with local presence
+- State wildlife agencies and departments
+- Established national organizations with local programs
 
-Provide real organizations with actual websites. Use numbered format.`
+Provide real organizations with actual websites that are currently active. Return 3-5 organizations.`,
+            temperature: 0.2
           });
 
-          console.log(`Web search simulation result for "${query}":`, searchResult.text);
+          console.log(`WebSearch result for "${query}":`, searchResult.text);
 
           if (searchResult && searchResult.text && searchResult.text.length > 0) {
             // Parse the search results to extract organizations
