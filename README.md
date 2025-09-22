@@ -123,15 +123,23 @@ graph TD
 - **ESLint & TypeScript** - Code quality and type safety
 - **PostCSS** - CSS processing and optimization
 
-## 🔌 API Documentation
+## 🔌 API Architecture
 
-### External APIs
+### Real-Time APIs
 
-| API | Purpose | Usage | Rate Limits |
-|-----|---------|-------|-------------|
-| **OpenStreetMap Nominatim** | Geocoding & location validation | Free tier, no authentication required | 1 request/second |
-| **OpenAI Chat Completions** | AI processing & web search | Requires API key, usage-based pricing | Model-dependent |
-| **OpenAI WebSearch** | Real-time web data retrieval | Integrated with GPT-4o-search-preview | Included in chat completions |
+| API | Purpose | Implementation | Impact |
+|-----|---------|----------------|---------|
+| **OpenStreetMap Nominatim** | Geocoding & location validation | Direct HTTP requests to nominatim.openstreetmap.org | Accurate location processing, coordinate mapping |
+| **Wikipedia REST API** | Species information & images | Requests to en.wikipedia.org/api/rest_v1 | Real descriptions and visual content |
+| **OpenAI GPT-4** | AI processing & web search | Multiple models (gpt-4o, gpt-4o-search-preview) | Intelligent search and real-time data |
+
+### Enhanced Search Systems
+
+| System | Implementation | Fallback Mechanisms |
+|--------|----------------|---------------------|
+| **Wildlife Discovery** | 5-tier search approach | 1. Web search → 2. Ecosystem → 3. Biogeographic → 4. Habitat → 5. Geographic |
+| **Organization Search** | Web search + database | OpenAI WebSearch → Pre-defined orgs → Government agencies |
+| **Conservation Status** | IUCN integration ready | Predefined status mappings with future API integration |
 
 ### Internal APIs
 
