@@ -258,6 +258,29 @@ export class LocationAgent {
           region: 'Massachusetts'
         }
       ]],
+      ['Miami', [
+        {
+          displayName: 'Miami, Florida',
+          searchQuery: 'Miami, Florida, USA',
+          description: 'A major city known for its cultural and economic significance',
+          country: 'United States',
+          region: 'Florida'
+        },
+        {
+          displayName: 'Miami, Ohio',
+          searchQuery: 'Miami, Ohio, USA',
+          description: 'A village that hosts Miami University',
+          country: 'United States',
+          region: 'Ohio'
+        },
+        {
+          displayName: 'Miami, Oklahoma',
+          searchQuery: 'Miami, Oklahoma, USA',
+          description: 'A city known for Route 66 history',
+          country: 'United States',
+          region: 'Oklahoma'
+        }
+      ]],
       ['Springfield', [
         {
           displayName: 'Springfield, Illinois',
@@ -483,11 +506,11 @@ Examples:
     let message = `🌍 **I found multiple places with that name. Which one did you mean?**\n\n`;
 
     options.forEach((option, index) => {
-      message += `**${index + 1}.** ${option.displayName}\n`;
-      message += `   ${option.description}\n\n`;
+      message += `• **${option.displayName}**\n`;
+      message += `  ${option.description}\n\n`;
     });
 
-    message += `Please reply with the **number** (1, 2, etc.) of your intended location.`;
+    message += `Please respond with the **full location name** (including state/country) from the list above, or add the state/country to your original location.`;
 
     return message;
   }

@@ -23,6 +23,7 @@ import { MessageFormatter } from "@/components/message-formatter";
 import { RoadrunnerLoader } from "@/components/roadrunner-loader";
 import { OrganizationSearchLoader } from "@/components/organization-search-loader";
 import { ErrorLoader } from "@/components/error-loader";
+import { ValidationLoader } from "@/components/validation-loader";
 import { CONFIG } from "@/lib/config";
 
 export default function Home() {
@@ -34,9 +35,10 @@ export default function Home() {
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingType, setLoadingType] = useState<'wildlife' | 'organizations' | 'error' | null>(null);
+  const [loadingType, setLoadingType] = useState<'wildlife' | 'organizations' | 'error' | 'validation' | null>(null);
   const [selectedAnimal, setSelectedAnimal] = useState<string | null>(null);
   const [errorType, setErrorType] = useState<'invalid-location' | 'invalid-animal' | 'general-error' | null>(null);
+  const [validationType, setValidationType] = useState<'location' | 'animal' | null>(null);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [poemTimeoutId, setPoemTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -171,15 +173,40 @@ export default function Home() {
       // No artificial delay - show response immediately when ready
 
       if (response.ok) {
-        // Check if this is an error response that should show error loader
+        // Check if this is a disambiguation response that should show validation loader
+        const isDisambiguationResponse = data.response.includes('🌍 **I found multiple places with that name');
+
+        // Check if this is other error responses that should show error loader
         const isErrorResponse = data.response.includes('🐾 **Please select an animal from the list!**') ||
                                data.response.includes('❌ **"') ||
+                               data.response.includes('❌ **I couldn\'t match your response') ||
                                data.response.includes('🌍 **') && data.response.includes('Could not understand');
+
+        if (isDisambiguationResponse) {
+          // Show validation loader for disambiguation - 36 seconds
+          setLoadingType('validation');
+          setValidationType('location');
+
+          // Show validation loader for 36 seconds, then show message
+          setTimeout(() => {
+            setIsLoading(false);
+            setLoadingType(null);
+            setValidationType(null);
+
+            const assistantMessage: UIMessage = {
+              id: (Date.now() + 1).toString(),
+              role: "assistant",
+              parts: [{ type: "text", text: data.response }],
+            };
+            setMessages((prev) => [...prev, assistantMessage]);
+          }, 36000);
+          return; // Don't show message immediately
+        }
 
         if (isErrorResponse) {
           // Show error loader briefly before showing error message
           setLoadingType('error');
-          if (data.response.includes('🐾') || data.response.includes('❌')) {
+          if (data.response.includes('🐾') || data.response.includes('❌ **"') || data.response.includes('animal from the list')) {
             setErrorType('invalid-animal');
           } else {
             setErrorType('invalid-location');
@@ -250,6 +277,7 @@ export default function Home() {
       setIsLoading(false);
       setLoadingType(null);
       setSelectedAnimal(null);
+      setValidationType(null);
     }
   };
 
@@ -305,6 +333,9 @@ export default function Home() {
                   )}
                   {loadingType === 'error' && errorType && (
                     <ErrorLoader errorType={errorType} />
+                  )}
+                  {loadingType === 'validation' && validationType && (
+                    <ValidationLoader type={validationType} />
                   )}
                   {!loadingType && <RoadrunnerLoader />} {/* Fallback */}
                 </div>
