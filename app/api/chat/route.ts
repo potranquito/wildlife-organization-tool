@@ -243,6 +243,7 @@ export async function POST(request: NextRequest) {
       const trimmedMessage = message.trim();
       const trimmedLowerMessage = lowerMessage.trim();
 
+
       // Try exact matches first (case insensitive)
       for (const s of species) {
         if (!s.commonName || !s.scientificName) continue;
