@@ -4,6 +4,8 @@ const GBIF_BASE = 'https://api.gbif.org/v1';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  console.log('🌍 GBIF SPECIES API called with params:', Object.fromEntries(searchParams.entries()));
   const name = searchParams.get('name');
   const taxonKey = searchParams.get('taxonKey');
 
@@ -25,6 +27,8 @@ export async function GET(req: NextRequest) {
       url = `${GBIF_BASE}/species/match?name=${encodeURIComponent(name!)}`;
     }
 
+    console.log('🌐 FETCHING GBIF species from:', url);
+
     const response = await fetch(url, {
       headers: {
         'User-Agent': 'Wildlife-Finder/1.0 (conservation education tool - contact@example.com)'
@@ -43,6 +47,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ GBIF species SUCCESS: Retrieved species data for ${data.scientificName || data.canonicalName || 'unknown'}`);
     return Response.json(data);
   } catch (error) {
     console.error('GBIF species fetch error:', error);

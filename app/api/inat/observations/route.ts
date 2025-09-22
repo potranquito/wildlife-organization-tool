@@ -5,6 +5,8 @@ const INAT_BASE = 'https://api.inaturalist.org/v1';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
+  console.log('🐛 iNATURALIST OBSERVATIONS API called with params:', Object.fromEntries(searchParams.entries()));
+
   // Example accepted params: taxon_id, taxon_name, lat, lng, radius (km), place_id, page, per_page
   const qs = new URLSearchParams();
 
@@ -39,6 +41,8 @@ export async function GET(req: NextRequest) {
 
   const url = `${INAT_BASE}/observations?${qs.toString()}`;
 
+  console.log('🌐 FETCHING iNaturalist observations from:', url);
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -58,6 +62,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ iNaturalist observations SUCCESS: ${data.results?.length || 0} observations found`);
     return Response.json(data);
   } catch (error) {
     console.error('iNaturalist fetch error:', error);

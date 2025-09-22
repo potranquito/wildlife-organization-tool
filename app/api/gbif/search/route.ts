@@ -4,6 +4,8 @@ const GBIF_BASE = 'https://api.gbif.org/v1';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  console.log('🌍 GBIF SEARCH API called with params:', Object.fromEntries(searchParams.entries()));
   const q = searchParams.get('q'); // search query
   const rank = searchParams.get('rank'); // SPECIES, GENUS, FAMILY, etc.
   const status = searchParams.get('status'); // ACCEPTED, SYNONYM, etc.
@@ -32,6 +34,8 @@ export async function GET(req: NextRequest) {
 
   const url = `${GBIF_BASE}/species/search?${params.toString()}`;
 
+  console.log('🌐 FETCHING GBIF species search from:', url);
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ GBIF search SUCCESS: ${data.results?.length || 0} species found`);
     return Response.json(data);
   } catch (error) {
     console.error('GBIF search fetch error:', error);

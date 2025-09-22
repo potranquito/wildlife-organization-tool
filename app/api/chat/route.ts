@@ -37,6 +37,8 @@ export async function POST(request: NextRequest) {
   try {
     const { message, sessionId = 'default' } = await request.json();
 
+    console.log(`🎯 CHAT API TRIGGERED - Session: ${sessionId}, Message: "${message}"`);
+
     if (!message) {
       return NextResponse.json({ error: 'Message is required' }, { status: 400 });
     }
@@ -103,7 +105,9 @@ export async function POST(request: NextRequest) {
 
           if (result.success && result.location) {
             // Get species list from live data sources
+            console.log(`📍 FETCHING SPECIES for location: ${result.location.displayName}`);
             let species = await findSpeciesByLocation(result.location);
+            console.log(`🐾 FOUND ${species.length} species for ${result.location.displayName}`);
 
             // Save location, species, and move to next step
             session.location = result.location;
@@ -134,7 +138,7 @@ export async function POST(request: NextRequest) {
               response += `- ${animal.commonName}${status}\n`;
             });
 
-            response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
+            response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **animal name only** (without conservation status) to find conservation organizations. For example: "Florida Panther" or "West Indian Manatee".`;
 
             return NextResponse.json({ response });
           } else {
@@ -159,7 +163,9 @@ export async function POST(request: NextRequest) {
 
       if (locationResult.success && locationResult.location) {
         // Get species list from live data sources
+        console.log(`📍 FETCHING SPECIES for location: ${locationResult.location.displayName}`);
         let species = await findSpeciesByLocation(locationResult.location);
+        console.log(`🐾 FOUND ${species.length} species for ${locationResult.location.displayName}`);
 
         // Save location, species, and move to next step
         session.location = locationResult.location;
@@ -189,7 +195,7 @@ export async function POST(request: NextRequest) {
           response += `- ${animal.commonName}${status}\n`;
         });
 
-        response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations. No other input will be accepted.`;
+        response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **animal name only** (without conservation status) to find conservation organizations. For example: "Florida Panther" or "West Indian Manatee".`;
 
         return NextResponse.json({ response });
 
@@ -243,6 +249,9 @@ export async function POST(request: NextRequest) {
       const trimmedMessage = message.trim();
       const trimmedLowerMessage = lowerMessage.trim();
 
+      // Strip conservation status from user input (e.g., "Florida Panther (Endangered)" -> "Florida Panther")
+      const cleanedMessage = trimmedMessage.replace(/\s*\([^)]*\)\s*$/, '').trim();
+      const cleanedLowerMessage = cleanedMessage.toLowerCase();
 
       // Try exact matches first (case insensitive)
       for (const s of species) {
@@ -251,8 +260,9 @@ export async function POST(request: NextRequest) {
         const commonNameLower = s.commonName.toLowerCase().trim();
         const scientificNameLower = s.scientificName.toLowerCase().trim();
 
-        // Exact match (most reliable)
-        if (trimmedLowerMessage === commonNameLower || trimmedLowerMessage === scientificNameLower) {
+        // Exact match (most reliable) - check both original and cleaned input
+        if (trimmedLowerMessage === commonNameLower || trimmedLowerMessage === scientificNameLower ||
+            cleanedLowerMessage === commonNameLower || cleanedLowerMessage === scientificNameLower) {
           selectedAnimal = s.commonName;
           matchedSpecies = s;
           break;
@@ -262,6 +272,7 @@ export async function POST(request: NextRequest) {
       // If no exact match, try normalized matches
       if (!selectedAnimal) {
         const normalizedMessage = trimmedLowerMessage.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedCleanedMessage = cleanedLowerMessage.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 
         for (const s of species) {
           if (!s.commonName || !s.scientificName) continue;
@@ -269,7 +280,8 @@ export async function POST(request: NextRequest) {
           const normalizedCommonName = s.commonName.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
           const normalizedScientificName = s.scientificName.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
 
-          if (normalizedMessage === normalizedCommonName || normalizedMessage === normalizedScientificName) {
+          if (normalizedMessage === normalizedCommonName || normalizedMessage === normalizedScientificName ||
+              normalizedCleanedMessage === normalizedCommonName || normalizedCleanedMessage === normalizedScientificName) {
             selectedAnimal = s.commonName;
             matchedSpecies = s;
             break;
@@ -296,7 +308,9 @@ export async function POST(request: NextRequest) {
       }
 
       if (selectedAnimal && matchedSpecies) {
+        console.log(`🏢 SEARCHING ORGANIZATIONS for ${selectedAnimal} in ${session.location?.displayName}`);
         const organizations = await findConservationOrganizations(matchedSpecies, session.location);
+        console.log(`🔍 FOUND ${organizations.length} organizations for ${selectedAnimal}`);
 
         let response = `**${selectedAnimal} Conservation Organizations:**\n\n`;
 

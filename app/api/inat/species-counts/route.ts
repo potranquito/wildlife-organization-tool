@@ -5,6 +5,8 @@ const INAT_BASE = 'https://api.inaturalist.org/v1';
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
 
+  console.log('🐛 iNATURALIST SPECIES-COUNTS API called with params:', Object.fromEntries(searchParams.entries()));
+
   // Build query parameters for species counts
   const qs = new URLSearchParams();
 
@@ -36,6 +38,8 @@ export async function GET(req: NextRequest) {
 
   const url = `${INAT_BASE}/observations/species_counts?${qs.toString()}`;
 
+  console.log('🌐 FETCHING iNaturalist species counts from:', url);
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -55,6 +59,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ iNaturalist species counts SUCCESS: ${data.results?.length || 0} species found`);
     return Response.json(data);
   } catch (error) {
     console.error('iNaturalist species counts fetch error:', error);

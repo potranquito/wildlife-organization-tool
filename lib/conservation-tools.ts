@@ -28,6 +28,8 @@ export interface Organization {
 
 export async function geocodeLocation(locationQuery: string): Promise<Location | null> {
   try {
+    console.log(`🗺️ GEOCODING STARTED for: "${locationQuery}"`);
+
     // Clean and normalize the location query
     const cleanQuery = locationQuery.trim();
 
@@ -55,14 +57,15 @@ export async function geocodeLocation(locationQuery: string): Promise<Location |
     const encodedQuery = encodeURIComponent(searchQuery);
     console.log(`Geocoding query: "${cleanQuery}" -> "${searchQuery}"`);
 
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodedQuery}&format=json&limit=3&addressdetails=1&countrycodes=&accept-language=en`,
-      {
-        headers: {
-          'User-Agent': 'ConservationAgent/1.0'
-        }
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodedQuery}&format=json&limit=3&addressdetails=1&countrycodes=&accept-language=en`;
+
+    console.log(`🌐 FETCHING from OpenStreetMap Nominatim:`, url);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'ConservationAgent/1.0'
       }
-    );
+    });
 
     if (!response.ok) {
       throw new Error(`Geocoding failed: ${response.status}`);
@@ -71,7 +74,7 @@ export async function geocodeLocation(locationQuery: string): Promise<Location |
     const data = await response.json();
 
     if (!data || data.length === 0) {
-      console.warn(`No geocoding results found for: ${cleanQuery}`);
+      console.warn(`❌ GEOCODING FAILED: No results found for "${cleanQuery}"`);
       return null;
     }
 
@@ -84,7 +87,7 @@ export async function geocodeLocation(locationQuery: string): Promise<Location |
       }
     }
 
-    console.log(`Geocoded "${cleanQuery}" to: ${selectedResult.display_name}`);
+    console.log(`✅ GEOCODING SUCCESS: "${cleanQuery}" → ${selectedResult.display_name}`);
 
     return {
       lat: parseFloat(selectedResult.lat),
@@ -883,7 +886,7 @@ async function searchConservationOrganizations(
     const speciesGroup = getSpeciesGroup(species.commonName);
     const locationName = location.city || location.state || location.country || 'local area';
 
-    console.log(`Using OpenAI WebSearch for ${species.commonName} (${speciesGroup}) organizations in ${locationName}`);
+    console.log(`🔍 WEBSEARCH STARTING for ${species.commonName} (${speciesGroup}) organizations in ${locationName}`);
 
     // Import WebSearch function dynamically to avoid module issues
     let webSearchResults: Organization[] = [];
@@ -900,7 +903,7 @@ async function searchConservationOrganizations(
       // Try multiple search queries to get diverse results
       for (const query of searchQueries.slice(0, 2)) { // Limit to 2 searches to avoid rate limits
         try {
-          console.log(`WebSearch query: "${query}"`);
+          console.log(`🌐 WEBSEARCH QUERY: "${query}"`);
 
           // Use AI with web search knowledge to find organizations
           const { openai } = await import('@ai-sdk/openai');
@@ -948,7 +951,7 @@ Search the web for real organizations with actual websites that are currently ac
           const searchResultText = searchResult.choices[0]?.message?.content || '';
           const mockSearchResult = { text: searchResultText };
 
-          console.log(`WebSearch result for "${query}":`, mockSearchResult.text);
+          console.log(`✅ WEBSEARCH SUCCESS for "${query}": ${mockSearchResult.text.length} characters found`);
 
           if (mockSearchResult && mockSearchResult.text && mockSearchResult.text.length > 0) {
             // Parse the search results to extract organizations
@@ -956,12 +959,12 @@ Search the web for real organizations with actual websites that are currently ac
             webSearchResults = [...webSearchResults, ...orgsFromSearch];
           }
         } catch (searchError) {
-          console.log(`WebSearch query failed: ${searchError}`);
+          console.log(`❌ WEBSEARCH FAILED for "${query}": ${searchError}`);
           continue;
         }
       }
     } catch (webSearchError) {
-      console.log(`WebSearch not available, falling back to AI generation: ${webSearchError}`);
+      console.log(`❌ WEBSEARCH UNAVAILABLE, falling back to AI generation: ${webSearchError}`);
     }
 
     // If WebSearch didn't provide enough results, supplement with AI generation
@@ -1013,7 +1016,7 @@ Use simple numbered format with organization name, website, and brief descriptio
       }
     }
 
-    console.log(`Total organizations found: ${webSearchResults.length}`);
+    console.log(`🏢 WEBSEARCH COMPLETE: ${webSearchResults.length} total organizations found, returning top 4`);
     return webSearchResults.slice(0, 4); // Return top 4 organizations
 
   } catch (error) {

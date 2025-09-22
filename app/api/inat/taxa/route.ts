@@ -4,6 +4,8 @@ const INAT_BASE = 'https://api.inaturalist.org/v1';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  console.log('🐛 iNATURALIST TAXA API called with params:', Object.fromEntries(searchParams.entries()));
   const q = searchParams.get('q'); // species common or scientific name
   const perPage = searchParams.get('per_page') ?? '20';
 
@@ -15,6 +17,8 @@ export async function GET(req: NextRequest) {
   }
 
   const url = `${INAT_BASE}/taxa/autocomplete?q=${encodeURIComponent(q)}&per_page=${perPage}&locale=en`;
+
+  console.log('🌐 FETCHING iNaturalist taxa from:', url);
 
   try {
     const response = await fetch(url, {
@@ -35,6 +39,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ iNaturalist taxa SUCCESS: ${data.results?.length || 0} taxa found`);
     return Response.json(data);
   } catch (error) {
     console.error('iNaturalist taxa fetch error:', error);

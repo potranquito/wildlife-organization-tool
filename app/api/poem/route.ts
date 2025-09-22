@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
 
     const { animal } = await request.json();
 
+    console.log(`📝 POEM API TRIGGERED for animal: ${animal}`);
+
     if (!animal) {
       return NextResponse.json({ error: 'Animal name is required' }, { status: 400 });
     }
@@ -30,7 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     // If no existing poem, generate one using AI with RAG examples
-    console.log(`Generating new poem for ${animal}`);
+    console.log(`🤖 OPENAI POEM GENERATION STARTED for: ${animal}`);
 
     // Get a few example poems for context
     const randomExample = getRandomPoem();
@@ -48,6 +50,8 @@ Write a poem about the ${animal} following the same style, structure, and educat
     const { openai } = await import('@ai-sdk/openai');
     const { generateText } = await import('ai');
 
+    console.log(`🌐 CALLING OpenAI GPT-4o for poem generation...`);
+
     const result = await generateText({
       model: openai('gpt-4o'),
       prompt: prompt,
@@ -55,7 +59,7 @@ Write a poem about the ${animal} following the same style, structure, and educat
     });
 
     const poemResponse = result.text.trim();
-    console.log(`Generated poem for ${animal}: ${poemResponse}`);
+    console.log(`✅ OPENAI POEM SUCCESS: Generated ${poemResponse.length} character poem for ${animal}`);
 
     return NextResponse.json({ response: poemResponse });
 

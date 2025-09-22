@@ -4,6 +4,8 @@ const GBIF_BASE = 'https://api.gbif.org/v1';
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
+
+  console.log('🌍 GBIF OCCURRENCES API called with params:', Object.fromEntries(searchParams.entries()));
   const name = searchParams.get('name'); // species name OR supply taxonKey directly
   const taxonKey = searchParams.get('taxonKey');
   const lat = searchParams.get('lat');
@@ -15,6 +17,7 @@ export async function GET(req: NextRequest) {
   // If no taxonKey provided, look it up by name
   if (!key && name) {
     try {
+      console.log('🔍 GBIF species match lookup for:', name);
       const matchResponse = await fetch(
         `${GBIF_BASE}/species/match?name=${encodeURIComponent(name)}`,
         {
@@ -72,6 +75,8 @@ export async function GET(req: NextRequest) {
 
   const url = `${GBIF_BASE}/occurrence/search?${params.toString()}`;
 
+  console.log('🌐 FETCHING GBIF occurrences from:', url);
+
   try {
     const response = await fetch(url, {
       headers: {
@@ -91,6 +96,7 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await response.json();
+    console.log(`✅ GBIF occurrences SUCCESS: ${data.results?.length || 0} occurrences found (total: ${data.count || 0})`);
     return Response.json(data);
   } catch (error) {
     console.error('GBIF fetch error:', error);

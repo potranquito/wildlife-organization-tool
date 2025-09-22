@@ -22,6 +22,7 @@ import type { UIMessage } from "ai";
 import { MessageFormatter } from "@/components/message-formatter";
 import { RoadrunnerLoader } from "@/components/roadrunner-loader";
 import { OrganizationSearchLoader } from "@/components/organization-search-loader";
+import { ErrorLoader } from "@/components/error-loader";
 import { CONFIG } from "@/lib/config";
 
 export default function Home() {
@@ -33,8 +34,9 @@ export default function Home() {
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
-  const [loadingType, setLoadingType] = useState<'wildlife' | 'organizations' | null>(null);
+  const [loadingType, setLoadingType] = useState<'wildlife' | 'organizations' | 'error' | null>(null);
   const [selectedAnimal, setSelectedAnimal] = useState<string | null>(null);
+  const [errorType, setErrorType] = useState<'invalid-location' | 'invalid-animal' | 'general-error' | null>(null);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [poemTimeoutId, setPoemTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -169,6 +171,36 @@ export default function Home() {
       // No artificial delay - show response immediately when ready
 
       if (response.ok) {
+        // Check if this is an error response that should show error loader
+        const isErrorResponse = data.response.includes('🐾 **Please select an animal from the list!**') ||
+                               data.response.includes('❌ **"') ||
+                               data.response.includes('🌍 **') && data.response.includes('Could not understand');
+
+        if (isErrorResponse) {
+          // Show error loader briefly before showing error message
+          setLoadingType('error');
+          if (data.response.includes('🐾') || data.response.includes('❌')) {
+            setErrorType('invalid-animal');
+          } else {
+            setErrorType('invalid-location');
+          }
+
+          // Show error loader for 2 seconds, then show message
+          setTimeout(() => {
+            setIsLoading(false);
+            setLoadingType(null);
+            setErrorType(null);
+
+            const assistantMessage: UIMessage = {
+              id: (Date.now() + 1).toString(),
+              role: "assistant",
+              parts: [{ type: "text", text: data.response }],
+            };
+            setMessages((prev) => [...prev, assistantMessage]);
+          }, 2000);
+          return; // Don't show message immediately
+        }
+
         const assistantMessage: UIMessage = {
           id: (Date.now() + 1).toString(),
           role: "assistant",
@@ -270,6 +302,9 @@ export default function Home() {
                   {loadingType === 'wildlife' && <RoadrunnerLoader />}
                   {loadingType === 'organizations' && selectedAnimal && (
                     <OrganizationSearchLoader animalName={selectedAnimal} />
+                  )}
+                  {loadingType === 'error' && errorType && (
+                    <ErrorLoader errorType={errorType} />
                   )}
                   {!loadingType && <RoadrunnerLoader />} {/* Fallback */}
                 </div>
