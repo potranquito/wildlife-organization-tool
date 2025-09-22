@@ -1,5 +1,15 @@
 import { Location, Species } from './conservation-tools';
 
+// Get the base URL for API calls
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return window.location.origin;
+  }
+  // Server-side - use environment variable or default
+  return process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:3006';
+};
+
 // Unified interface for wildlife observation data
 export interface WildlifeObservation {
   id: string;
@@ -81,8 +91,8 @@ export class WildlifeDataService {
         iconic_taxa: 'Mammalia,Aves,Reptilia,Amphibia'
       });
 
-      // Use relative URL to avoid port issues
-      const response = await fetch(`/api/inat/species-counts?${params.toString()}`);
+      // Use absolute URL for server-side fetch
+      const response = await fetch(`${getBaseUrl()}/api/inat/species-counts?${params.toString()}`);
 
       if (!response.ok) {
         console.error('iNaturalist species-counts API error:', response.status);
@@ -147,8 +157,8 @@ export class WildlifeDataService {
             limit: Math.ceil(limit / commonTaxa.length).toString()
           });
 
-          // Use relative URL to avoid port issues
-          const searchResponse = await fetch(`/api/gbif/search?${searchParams.toString()}`);
+          // Use absolute URL for server-side fetch
+          const searchResponse = await fetch(`${getBaseUrl()}/api/gbif/search?${searchParams.toString()}`);
 
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
@@ -164,7 +174,7 @@ export class WildlifeDataService {
                   limit: '5'
                 });
 
-                const occResponse = await fetch(`/api/gbif/occurrences?${occParams.toString()}`);
+                const occResponse = await fetch(`${getBaseUrl()}/api/gbif/occurrences?${occParams.toString()}`);
 
                 if (occResponse.ok) {
                   const occData = await occResponse.json();
@@ -239,7 +249,7 @@ export class WildlifeDataService {
       });
 
       // Use relative URL to avoid port issues
-      const response = await fetch(`/api/inat/observations?${params.toString()}`);
+      const response = await fetch(`${getBaseUrl()}/api/inat/observations?${params.toString()}`);
 
       if (!response.ok) return [];
 
@@ -285,7 +295,7 @@ export class WildlifeDataService {
       });
 
       // Use relative URL to avoid port issues
-      const response = await fetch(`/api/gbif/occurrences?${params.toString()}`);
+      const response = await fetch(`${getBaseUrl()}/api/gbif/occurrences?${params.toString()}`);
 
       if (!response.ok) return [];
 
