@@ -31,8 +31,9 @@ export function OrganizationSearchLoader({ animalName }: OrganizationSearchLoade
         const currentStep = newSteps[currentStepIndex];
 
         if (currentStep && !currentStep.isComplete) {
-          // Much slower progress - each step takes about 9 seconds (matching RoadrunnerLoader)
-          currentStep.progress = Math.min(currentStep.progress + Math.random() * 1.5 + 0.25, 100);
+          // Adjusted for 24 seconds total (6 seconds per step)
+          // Each step takes about 6 seconds to complete for ~24 second total
+          currentStep.progress = Math.min(currentStep.progress + Math.random() * 2.4 + 0.5, 100);
 
           // Mark as complete if progress reaches 100%
           if (currentStep.progress >= 100) {
@@ -50,7 +51,7 @@ export function OrganizationSearchLoader({ animalName }: OrganizationSearchLoade
 
         return newSteps;
       });
-    }, 200); // Update every 200ms
+    }, 150); // Update every 150ms for smooth animation
 
     return () => clearInterval(interval);
   }, [currentStepIndex]);
