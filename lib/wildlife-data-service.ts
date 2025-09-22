@@ -72,12 +72,6 @@ export class WildlifeDataService {
    */
   private async getInatSpeciesForLocation(location: Location, limit: number): Promise<NormalizedSpecies[]> {
     try {
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : '';
-
       // Get species counts for the location
       const params = new URLSearchParams({
         lat: location.lat.toString(),
@@ -87,7 +81,8 @@ export class WildlifeDataService {
         iconic_taxa: 'Mammalia,Aves,Reptilia,Amphibia'
       });
 
-      const response = await fetch(`${baseUrl}/api/inat/species-counts?${params.toString()}`);
+      // Use relative URL to avoid port issues
+      const response = await fetch(`/api/inat/species-counts?${params.toString()}`);
 
       if (!response.ok) {
         console.error('iNaturalist species-counts API error:', response.status);
@@ -135,12 +130,6 @@ export class WildlifeDataService {
    */
   private async getGbifSpeciesForLocation(location: Location, limit: number): Promise<NormalizedSpecies[]> {
     try {
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : '';
-
       // GBIF doesn't have a direct "species in area" endpoint like iNat
       // We'll need to search for common taxa and get their occurrences
       const commonTaxa = [
@@ -158,7 +147,8 @@ export class WildlifeDataService {
             limit: Math.ceil(limit / commonTaxa.length).toString()
           });
 
-          const searchResponse = await fetch(`${baseUrl}/api/gbif/search?${searchParams.toString()}`);
+          // Use relative URL to avoid port issues
+          const searchResponse = await fetch(`/api/gbif/search?${searchParams.toString()}`);
 
           if (searchResponse.ok) {
             const searchData = await searchResponse.json();
@@ -174,7 +164,7 @@ export class WildlifeDataService {
                   limit: '5'
                 });
 
-                const occResponse = await fetch(`${baseUrl}/api/gbif/occurrences?${occParams.toString()}`);
+                const occResponse = await fetch(`/api/gbif/occurrences?${occParams.toString()}`);
 
                 if (occResponse.ok) {
                   const occData = await occResponse.json();
@@ -240,12 +230,6 @@ export class WildlifeDataService {
     limit: number
   ): Promise<WildlifeObservation[]> {
     try {
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : '';
-
       const params = new URLSearchParams({
         taxon_name: speciesName,
         lat: location.lat.toString(),
@@ -254,7 +238,8 @@ export class WildlifeDataService {
         per_page: limit.toString()
       });
 
-      const response = await fetch(`${baseUrl}/api/inat/observations?${params.toString()}`);
+      // Use relative URL to avoid port issues
+      const response = await fetch(`/api/inat/observations?${params.toString()}`);
 
       if (!response.ok) return [];
 
@@ -291,12 +276,6 @@ export class WildlifeDataService {
     limit: number
   ): Promise<WildlifeObservation[]> {
     try {
-      const baseUrl = process.env.NODE_ENV === 'development'
-        ? 'http://localhost:3000'
-        : process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : '';
-
       const params = new URLSearchParams({
         name: speciesName,
         lat: location.lat.toString(),
@@ -305,7 +284,8 @@ export class WildlifeDataService {
         limit: limit.toString()
       });
 
-      const response = await fetch(`${baseUrl}/api/gbif/occurrences?${params.toString()}`);
+      // Use relative URL to avoid port issues
+      const response = await fetch(`/api/gbif/occurrences?${params.toString()}`);
 
       if (!response.ok) return [];
 
