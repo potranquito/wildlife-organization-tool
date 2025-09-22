@@ -173,9 +173,13 @@ function parseWildlifeSearchResults(searchResults: string, location: Location): 
           });
         }
 
-        // Start new species
+        // Start new species - clean up common name to remove "Common Name" prefix
+        let cleanCommonName = numberMatch[2].trim();
+        // Remove "Common Name" prefix if it exists
+        cleanCommonName = cleanCommonName.replace(/^Common Name\s*:?\s*/i, '');
+
         currentSpecies = {
-          commonName: numberMatch[2].trim(),
+          commonName: cleanCommonName,
           scientificName: '',
           conservationStatus: 'Data Deficient',
           habitat: '',

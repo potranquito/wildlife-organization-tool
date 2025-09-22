@@ -503,7 +503,7 @@ Examples:
    * Format disambiguation options for user display
    */
   formatDisambiguationMessage(options: DisambiguationOption[]): string {
-    let message = `🌍 **I found multiple places with that name. Which one did you mean?**\n\n`;
+    let message = `🌍 **Please add more info to your location!**\n\nI found multiple places with that name:\n\n`;
 
     options.forEach((option, index) => {
       message += `• **${option.displayName}**\n`;

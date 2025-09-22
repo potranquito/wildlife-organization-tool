@@ -173,35 +173,14 @@ export default function Home() {
       // No artificial delay - show response immediately when ready
 
       if (response.ok) {
-        // Check if this is a disambiguation response that should show validation loader
-        const isDisambiguationResponse = data.response.includes('🌍 **I found multiple places with that name');
+        // Check if this is a disambiguation response - show immediately, no loader
+        const isDisambiguationResponse = data.response.includes('🌍 **Please add more info to your location!**');
 
         // Check if this is other error responses that should show error loader
         const isErrorResponse = data.response.includes('🐾 **Please select an animal from the list!**') ||
                                data.response.includes('❌ **"') ||
                                data.response.includes('❌ **I couldn\'t match your response') ||
                                data.response.includes('🌍 **') && data.response.includes('Could not understand');
-
-        if (isDisambiguationResponse) {
-          // Show validation loader for disambiguation - 36 seconds
-          setLoadingType('validation');
-          setValidationType('location');
-
-          // Show validation loader for 36 seconds, then show message
-          setTimeout(() => {
-            setIsLoading(false);
-            setLoadingType(null);
-            setValidationType(null);
-
-            const assistantMessage: UIMessage = {
-              id: (Date.now() + 1).toString(),
-              role: "assistant",
-              parts: [{ type: "text", text: data.response }],
-            };
-            setMessages((prev) => [...prev, assistantMessage]);
-          }, 36000);
-          return; // Don't show message immediately
-        }
 
         if (isErrorResponse) {
           // Show error loader briefly before showing error message
