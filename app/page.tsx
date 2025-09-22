@@ -21,6 +21,7 @@ import {
 import type { UIMessage } from "ai";
 import { MessageFormatter } from "@/components/message-formatter";
 import { RoadrunnerLoader } from "@/components/roadrunner-loader";
+import { OrganizationSearchLoader } from "@/components/organization-search-loader";
 import { CONFIG } from "@/lib/config";
 
 export default function Home() {
@@ -32,6 +33,8 @@ export default function Home() {
     }
   ]);
   const [isLoading, setIsLoading] = useState(false);
+  const [loadingType, setLoadingType] = useState<'wildlife' | 'organizations' | null>(null);
+  const [selectedAnimal, setSelectedAnimal] = useState<string | null>(null);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
   const [poemTimeoutId, setPoemTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -125,6 +128,25 @@ export default function Home() {
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
 
+    // Determine loading type based on message content
+    // Check if this looks like a location query (first step)
+    const locationPatterns = [
+      /\b(city|state|country|location)\b/i,
+      /\b[A-Z][a-z]+(,\s*[A-Z][a-z]+)*\b/, // City, State format
+      /\b(in|near|around|from)\s+[A-Z]/i,
+      /^\s*[A-Z][a-z]+(\s+[A-Z][a-z]+)*(\s*,\s*[A-Z][a-z]+(\s+[A-Z][a-z]+)*)*\s*$/
+    ];
+
+    const isLocationQuery = locationPatterns.some(pattern => pattern.test(message.text || ''));
+
+    if (isLocationQuery) {
+      setLoadingType('wildlife');
+    } else {
+      // This is likely an animal selection (organization search)
+      setLoadingType('organizations');
+      setSelectedAnimal(message.text.trim());
+    }
+
     // Track start time for potential use
     const startTime = Date.now();
 
@@ -194,6 +216,8 @@ export default function Home() {
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
       setIsLoading(false);
+      setLoadingType(null);
+      setSelectedAnimal(null);
     }
   };
 
@@ -243,7 +267,11 @@ export default function Home() {
             {isLoading && (
               <div className="flex justify-center items-center my-8">
                 <div className="w-full max-w-md">
-                  <RoadrunnerLoader />
+                  {loadingType === 'wildlife' && <RoadrunnerLoader />}
+                  {loadingType === 'organizations' && selectedAnimal && (
+                    <OrganizationSearchLoader animalName={selectedAnimal} />
+                  )}
+                  {!loadingType && <RoadrunnerLoader />} {/* Fallback */}
                 </div>
               </div>
             )}

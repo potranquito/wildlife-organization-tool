@@ -2,6 +2,10 @@
 
 import { useState, useEffect } from 'react';
 
+interface OrganizationSearchLoaderProps {
+  animalName: string;
+}
+
 interface ProgressStep {
   id: string;
   label: string;
@@ -10,12 +14,12 @@ interface ProgressStep {
   isComplete: boolean;
 }
 
-export function RoadrunnerLoader() {
+export function OrganizationSearchLoader({ animalName }: OrganizationSearchLoaderProps) {
   const [steps, setSteps] = useState<ProgressStep[]>([
-    { id: 'geocoding', label: 'Processing location', progress: 0, isActive: true, isComplete: false },
-    { id: 'gbif', label: 'Searching GBIF Database', progress: 0, isActive: false, isComplete: false },
-    { id: 'inaturalist', label: 'Searching iNaturalist Database', progress: 0, isActive: false, isComplete: false },
-    { id: 'merging', label: 'Merging wildlife data', progress: 0, isActive: false, isComplete: false }
+    { id: 'validate', label: `Validating ${animalName} selection`, progress: 0, isActive: true, isComplete: false },
+    { id: 'search', label: 'Searching conservation organizations', progress: 0, isActive: false, isComplete: false },
+    { id: 'websearch', label: 'Using AI-powered web search', progress: 0, isActive: false, isComplete: false },
+    { id: 'compile', label: 'Compiling organization list', progress: 0, isActive: false, isComplete: false }
   ]);
 
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -27,9 +31,8 @@ export function RoadrunnerLoader() {
         const currentStep = newSteps[currentStepIndex];
 
         if (currentStep && !currentStep.isComplete) {
-          // Slower, more realistic progress increment (4-5 seconds per step)
-          // Each step takes about 4.5 seconds to complete
-          currentStep.progress = Math.min(currentStep.progress + Math.random() * 3 + 1, 100);
+          // Slower progress - each step takes about 3-4 seconds
+          currentStep.progress = Math.min(currentStep.progress + Math.random() * 4 + 2, 100);
 
           // Mark as complete if progress reaches 100%
           if (currentStep.progress >= 100) {
@@ -47,7 +50,7 @@ export function RoadrunnerLoader() {
 
         return newSteps;
       });
-    }, 150); // Update every 150ms for smooth animation
+    }, 200); // Update every 200ms
 
     return () => clearInterval(interval);
   }, [currentStepIndex]);
@@ -55,9 +58,9 @@ export function RoadrunnerLoader() {
   return (
     <div className="w-full max-w-lg mx-auto p-6 bg-white/80 backdrop-blur-sm rounded-xl border border-green-200 shadow-lg">
       <div className="text-center mb-6">
-        <div className="text-3xl mb-2">🔍</div>
-        <h3 className="text-lg font-semibold text-green-800">Discovering Wildlife</h3>
-        <p className="text-sm text-green-600">Searching biodiversity databases...</p>
+        <div className="text-3xl mb-2">🏢</div>
+        <h3 className="text-lg font-semibold text-green-800">Finding Organizations</h3>
+        <p className="text-sm text-green-600">Locating conservation groups for {animalName}...</p>
       </div>
 
       <div className="space-y-4">
@@ -69,19 +72,19 @@ export function RoadrunnerLoader() {
                   step.isComplete
                     ? 'bg-green-500 text-white'
                     : step.isActive
-                      ? 'bg-blue-500 text-white animate-pulse'
+                      ? 'bg-orange-500 text-white animate-pulse'
                       : 'bg-gray-200 text-gray-500'
                 }`}>
                   {step.isComplete ? '✓' : index + 1}
                 </div>
                 <span className={`text-sm font-medium ${
-                  step.isActive ? 'text-blue-700' : step.isComplete ? 'text-green-700' : 'text-gray-500'
+                  step.isActive ? 'text-orange-700' : step.isComplete ? 'text-green-700' : 'text-gray-500'
                 }`}>
                   {step.label}
                 </span>
               </div>
               <span className={`text-sm font-bold ${
-                step.isActive ? 'text-blue-600' : step.isComplete ? 'text-green-600' : 'text-gray-400'
+                step.isActive ? 'text-orange-600' : step.isComplete ? 'text-green-600' : 'text-gray-400'
               }`}>
                 {Math.round(step.progress)}%
               </span>
@@ -94,7 +97,7 @@ export function RoadrunnerLoader() {
                   step.isComplete
                     ? 'bg-green-500'
                     : step.isActive
-                      ? 'bg-blue-500'
+                      ? 'bg-orange-500'
                       : 'bg-gray-300'
                 }`}
                 style={{ width: `${step.progress}%` }}
@@ -107,23 +110,23 @@ export function RoadrunnerLoader() {
       {/* Additional Loading Indicators */}
       <div className="mt-6 text-center">
         {currentStepIndex === 0 && (
-          <div className="text-sm text-blue-600 animate-pulse">
-            📍 Converting location to coordinates...
+          <div className="text-sm text-orange-600 animate-pulse">
+            ✅ Confirming {animalName} is from provided species list...
           </div>
         )}
         {currentStepIndex === 1 && (
-          <div className="text-sm text-blue-600 animate-pulse">
-            🌍 Querying global biodiversity records...
+          <div className="text-sm text-orange-600 animate-pulse">
+            🔍 Searching for wildlife rehabilitation centers and conservation groups...
           </div>
         )}
         {currentStepIndex === 2 && (
-          <div className="text-sm text-blue-600 animate-pulse">
-            🔬 Fetching research-grade observations...
+          <div className="text-sm text-orange-600 animate-pulse">
+            🌐 Using AI to find current, legitimate organizations...
           </div>
         )}
         {currentStepIndex === 3 && (
-          <div className="text-sm text-blue-600 animate-pulse">
-            🧬 Combining and deduplicating species data...
+          <div className="text-sm text-orange-600 animate-pulse">
+            📋 Verifying organization details and contact information...
           </div>
         )}
       </div>
