@@ -102,102 +102,43 @@ export async function geocodeLocation(locationQuery: string): Promise<Location |
 
 export async function findSpeciesByLocation(location: Location): Promise<Species[]> {
   try {
-    // Check for OpenAI API key
-    if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY environment variable is not set');
-      return [];
-    }
-
     const locationName = location.city || location.state || location.country || 'this location';
-    console.log(`Searching for wildlife in ${locationName} using OpenAI WebSearch tool`);
+    console.log(`Searching for wildlife in ${locationName} using real iNaturalist and GBIF APIs`);
 
-    // Import OpenAI and generateText
-    const { openai } = await import('@ai-sdk/openai');
-    const { generateText } = await import('ai');
+    // Import the wildlife data service
+    const { wildlifeDataService } = await import('./wildlife-data-service');
 
-    // Use WebSearch simulation to find current wildlife data
-    const searchQueries = [
-      `wildlife animals found in ${locationName} native species`,
-      `birds mammals reptiles amphibians ${locationName} local wildlife`,
-      `endangered species ${locationName} conservation status`
-    ];
+    // Get species data from both APIs
+    const normalizedSpecies = await wildlifeDataService.getSpeciesForLocation(location, 12);
 
-    let allSpecies: Species[] = [];
+    // Convert normalized species to legacy Species format
+    const species: Species[] = normalizedSpecies.map((ns, index) => ({
+      id: ns.id,
+      commonName: ns.commonName,
+      scientificName: ns.scientificName,
+      conservationStatus: ns.conservationStatus,
+      description: `Found in ${locationName} with ${ns.observationCount} recent observation${ns.observationCount !== 1 ? 's' : ''}`,
+      imageUrl: ns.imageUrl,
+      habitat: ns.habitat || 'Local habitat',
+      source: ns.source
+    }));
 
-    for (const query of searchQueries) {
-      try {
-        console.log(`WebSearch query: "${query}"`);
+    console.log(`Found ${species.length} species from real API data for ${locationName}`);
 
-        // Use OpenAI's WebSearch-enabled model
-        const { OpenAI } = await import('openai');
-        const openaiClient = new OpenAI({
-          apiKey: process.env.OPENAI_API_KEY
-        });
-
-        const result = await openaiClient.chat.completions.create({
-          model: 'gpt-4o-search-preview',
-          web_search_options: {},
-          messages: [
-            {
-              role: 'system',
-              content: 'You are a wildlife research expert. Search the web for current, accurate information about wildlife species in specific locations.'
-            },
-            {
-              role: 'user',
-              content: `Find wildlife species data for: "${query}"
-
-Search for 8-12 different wildlife species (mammals, birds, reptiles, amphibians) currently found in ${locationName}.
-
-Format results as:
-
-1. Common Name
-Scientific Name: [Scientific name]
-Conservation Status: [Current IUCN status or "Data Deficient"]
-Type: [mammal/bird/reptile/amphibian]
-
-2. Common Name
-Scientific Name: [Scientific name]
-Conservation Status: [Current IUCN status or "Data Deficient"]
-Type: [mammal/bird/reptile/amphibian]
-
-Focus on:
-- Species actually found in the geographic area of ${locationName}
-- Mix of common and notable species with current conservation status
-- Include recent taxonomy and status updates from IUCN Red List
-- Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
-
-Search the web for real species based on current biodiversity databases like IUCN, iNaturalist, and GBIF.`
-            }
-          ]
-        });
-
-        const resultText = result.choices[0]?.message?.content || '';
-        const mockResult = { text: resultText };
-
-        console.log(`WebSearch result for "${query}":`, mockResult.text);
-
-        // Parse the search results to extract species
-        const speciesFromSearch = parseWildlifeSearchResults(mockResult.text, location);
-        allSpecies = [...allSpecies, ...speciesFromSearch];
-
-      } catch (searchError) {
-        console.log(`WebSearch query failed: ${searchError}`);
-        continue;
-      }
+    // If we have good results from APIs, return them
+    if (species.length >= 3) {
+      return species.slice(0, 8);
     }
 
-    // Remove duplicates and limit results
-    const uniqueSpecies = removeDuplicateSpecies(allSpecies);
-    const finalSpecies = uniqueSpecies.slice(0, 8);
-
-    console.log(`Found ${finalSpecies.length} unique species for ${locationName}`);
-    return finalSpecies;
+    // Fallback to enhanced search if real APIs don't return enough data
+    console.log('Real API data insufficient, falling back to enhanced search');
+    return await enhancedWildlifeSearch(location);
 
   } catch (error) {
-    console.error('Dynamic species lookup error:', error);
+    console.error('Real API wildlife lookup error:', error);
 
-    // Use enhanced AI-powered search with multiple strategies
-    console.log('Primary wildlife search failed, trying enhanced multi-tier approach');
+    // Fallback to enhanced AI-powered search
+    console.log('Real APIs failed, trying enhanced multi-tier approach');
     return await enhancedWildlifeSearch(location);
   }
 }

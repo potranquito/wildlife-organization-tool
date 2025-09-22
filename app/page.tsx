@@ -110,6 +110,13 @@ export default function Home() {
   ) => {
     if (!message.text?.trim() || isLoading) return;
 
+    // Clear the textarea immediately after getting the text
+    const form = event.target as HTMLFormElement;
+    const textarea = form.querySelector('textarea[name="message"]') as HTMLTextAreaElement;
+    if (textarea) {
+      textarea.value = '';
+    }
+
     const userMessage: UIMessage = {
       id: Date.now().toString(),
       role: "user",
@@ -188,9 +195,6 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
-
-    // Reset form
-    (event.target as HTMLFormElement).reset();
   };
 
   return (
