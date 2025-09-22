@@ -27,9 +27,9 @@ export function RoadrunnerLoader() {
         const currentStep = newSteps[currentStepIndex];
 
         if (currentStep && !currentStep.isComplete) {
-          // Much slower, more realistic progress increment (9 seconds per step)
-          // Each step takes about 9 seconds to complete for ~36 second total
-          currentStep.progress = Math.min(currentStep.progress + Math.random() * 1.5 + 0.25, 100);
+          // Adjusted for 24 seconds total validation time (6 seconds per step)
+          // Each step takes about 6 seconds to complete for ~24 second total
+          currentStep.progress = Math.min(currentStep.progress + Math.random() * 2.4 + 0.5, 100);
 
           // Mark as complete if progress reaches 100%
           if (currentStep.progress >= 100) {
