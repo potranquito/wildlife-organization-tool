@@ -31,8 +31,8 @@ export function OrganizationSearchLoader({ animalName }: OrganizationSearchLoade
         const currentStep = newSteps[currentStepIndex];
 
         if (currentStep && !currentStep.isComplete) {
-          // Slower progress - each step takes about 3-4 seconds
-          currentStep.progress = Math.min(currentStep.progress + Math.random() * 4 + 2, 100);
+          // Much slower progress - each step takes about 9 seconds (matching RoadrunnerLoader)
+          currentStep.progress = Math.min(currentStep.progress + Math.random() * 1.5 + 0.25, 100);
 
           // Mark as complete if progress reaches 100%
           if (currentStep.progress >= 100) {
