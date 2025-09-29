@@ -71,14 +71,28 @@ export async function POST(request: NextRequest) {
 
       // Additional check: make sure this isn't just an animal name from our species list
       const isAnimalFromList = session.species?.some(species => {
-        const normalizedMessage = message.toLowerCase().trim().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-        const normalizedCommonName = species.commonName.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-        const normalizedScientificName = species.scientificName.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        if (!species.commonName || !species.scientificName) return false;
 
-        return normalizedMessage === normalizedCommonName ||
-               normalizedMessage === normalizedScientificName ||
-               message.toLowerCase().trim() === species.commonName.toLowerCase() ||
-               message.toLowerCase().trim() === species.scientificName.toLowerCase();
+        const userInput = message.toLowerCase().trim();
+        const commonNameLower = species.commonName.toLowerCase().trim();
+        const scientificNameLower = species.scientificName.toLowerCase().trim();
+
+        // Strip conservation status from user input if present
+        const cleanedUserInput = userInput.replace(/\s*\([^)]*\)\s*$/, '').trim();
+
+        // Try exact matches first
+        if (userInput === commonNameLower || userInput === scientificNameLower ||
+            cleanedUserInput === commonNameLower || cleanedUserInput === scientificNameLower) {
+          return true;
+        }
+
+        // Try normalized matches (remove punctuation, normalize spaces)
+        const normalizedUserInput = userInput.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedCommonName = commonNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedScientificName = scientificNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+
+        return normalizedUserInput === normalizedCommonName ||
+               normalizedUserInput === normalizedScientificName;
       });
 
       if (isLocationInput && !isAnimalFromList) {

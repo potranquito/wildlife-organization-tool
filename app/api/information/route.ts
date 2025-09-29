@@ -7,20 +7,21 @@ import {
 } from '@/lib/wildlife-rag-service';
 
 export async function POST(request: NextRequest) {
+  const startTime = Date.now();
   try {
     // Check for required environment variables
     if (!process.env.OPENAI_API_KEY) {
-      console.error('OPENAI_API_KEY environment variable is not set');
+      console.error('❌ OPENAI_API_KEY environment variable is not set');
       return NextResponse.json({
-        error: 'Service temporarily unavailable. Please try again later.'
-      }, { status: 503 });
+        response: '⚠️ **Information Service Configuration Error**\n\nThe wildlife information service is currently unavailable due to a configuration issue. Please try again later or contact support if the problem persists.'
+      });
     }
 
     if (!process.env.VECTORIZE_TOKEN) {
-      console.error('VECTORIZE_TOKEN environment variable is not set');
+      console.error('❌ VECTORIZE_TOKEN environment variable is not set');
       return NextResponse.json({
-        error: 'Information service temporarily unavailable. Please try again later.'
-      }, { status: 503 });
+        response: '⚠️ **RAG Database Unavailable**\n\nThe wildlife information database is currently unavailable. Please try again later or ask general questions about wildlife conservation.'
+      });
     }
 
     const { animal, location } = await request.json();
