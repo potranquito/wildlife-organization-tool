@@ -41,10 +41,11 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 - **Session Management**: Persistent state between conversation steps
 
 ### Wildlife Data Integration
-- **iNaturalist API**: Research-grade wildlife observations
-- **GBIF API**: Global biodiversity occurrence data
-- **OpenStreetMap**: Geocoding for location processing
-- **Geographic Filtering**: Country-specific species results
+- **iNaturalist API**: Research-grade wildlife observations with real-time data (api.inaturalist.org/v1)
+- **GBIF API**: Global biodiversity occurrence data with species validation (api.gbif.org/v1)
+- **OpenStreetMap**: Geocoding for location processing (nominatim.openstreetmap.org)
+- **Wikipedia API**: Species descriptions and images (wikipedia.org/api/rest_v1)
+- **Geographic Filtering**: Country-specific species results with multi-tier validation
 
 ### AI-Powered Organization Search
 - **OpenAI GPT-4**: Intelligent search for conservation organizations
