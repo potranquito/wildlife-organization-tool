@@ -13,8 +13,6 @@ import {
   type LocationParsingResult,
   type DisambiguationOption
 } from '@/lib/location-agent';
-import { WILDLIFE_POETRY_AGENT_PROMPT } from '@/lib/agent-prompts';
-import { findPoemByAnimal, getRandomPoem } from '@/lib/animal-poems-rag';
 import {
   CONFIG,
   createCountryPattern,

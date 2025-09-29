@@ -40,7 +40,7 @@ export default function Home() {
   const [errorType, setErrorType] = useState<'invalid-location' | 'invalid-animal' | 'general-error' | null>(null);
   const [validationType, setValidationType] = useState<'location' | 'animal' | null>(null);
   const [sessionId] = useState(() => Math.random().toString(36).substring(7));
-  const [poemTimeoutId, setPoemTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [informationTimeoutId, setInformationTimeoutId] = useState<NodeJS.Timeout | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change or loading state changes
@@ -53,32 +53,32 @@ export default function Home() {
   // Cleanup timeout on unmount
   useEffect(() => {
     return () => {
-      if (poemTimeoutId) {
-        clearTimeout(poemTimeoutId);
+      if (informationTimeoutId) {
+        clearTimeout(informationTimeoutId);
       }
     };
-  }, [poemTimeoutId]);
+  }, [informationTimeoutId]);
 
-  // Function to generate and add a poem
-  const generatePoem = async (animal: string) => {
+  // Function to generate and add wildlife information
+  const generateInformation = async (animal: string, location?: string) => {
     try {
-      const response = await fetch("/api/poem", {
+      const response = await fetch("/api/information", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ animal }),
+        body: JSON.stringify({ animal, location }),
       });
 
       if (response.ok) {
         const data = await response.json();
-        const poemMessage: UIMessage = {
+        const informationMessage: UIMessage = {
           id: Date.now().toString(),
           role: "assistant",
           parts: [{ type: "text", text: data.response }],
         };
-        setMessages((prev) => [...prev, poemMessage]);
+        setMessages((prev) => [...prev, informationMessage]);
       }
     } catch (error) {
-      console.error("Error generating poem:", error);
+      console.error("Error generating information:", error);
     }
   };
 
@@ -214,29 +214,29 @@ export default function Home() {
         };
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Check if this is an organization response and schedule poem generation
+        // Check if this is an organization response and schedule information generation
         const animal = extractAnimalFromResponse(data.response);
         if (animal) {
-          // Clear any existing poem timeout
-          if (poemTimeoutId) {
-            clearTimeout(poemTimeoutId);
+          // Clear any existing information timeout
+          if (informationTimeoutId) {
+            clearTimeout(informationTimeoutId);
           }
 
-          // Add indicator message that poem is coming
+          // Add indicator message that information is coming
           const indicatorMessage: UIMessage = {
             id: (Date.now() + 2).toString(),
             role: "assistant",
-            parts: [{ type: "text", text: `📝 *Generating an educational poem about the ${animal}...*` }],
+            parts: [{ type: "text", text: `📊 *Retrieving detailed wildlife information about the ${animal}...*` }],
           };
           setMessages((prev) => [...prev, indicatorMessage]);
 
-          // Schedule poem generation based on configuration
+          // Schedule information generation based on configuration
           const timeoutId = setTimeout(() => {
-            generatePoem(animal);
-            setPoemTimeoutId(null);
-          }, CONFIG.timing.poemDelay);
+            generateInformation(animal); // Location context will be extracted from chat session
+            setInformationTimeoutId(null);
+          }, CONFIG.timing.poemDelay); // Keeping same timing config
 
-          setPoemTimeoutId(timeoutId);
+          setInformationTimeoutId(timeoutId);
         }
       } else {
         throw new Error(data.error || "Failed to get response");

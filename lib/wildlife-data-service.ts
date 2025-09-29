@@ -7,7 +7,7 @@ const getBaseUrl = () => {
     return window.location.origin;
   }
   // Server-side - use environment variable or default
-  return process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:3006';
+  return process.env.NEXTAUTH_URL || process.env.VERCEL_URL || 'http://localhost:3000';
 };
 
 // Unified interface for wildlife observation data

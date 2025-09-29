@@ -26,17 +26,17 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 ### Key Directories
 - `app/` - Next.js App Router pages and API routes
 - `app/api/chat/` - Three-agent AI conversation system with guardrails
-- `app/api/poem/` - Educational poetry generation with RAG database
+- `app/api/information/` - Wildlife information retrieval using Vectorize RAG database
 - `lib/conservation-tools.ts` - Wildlife data APIs and AI organization search
 - `lib/agent-prompts.ts` - Agent system prompts and instructions
-- `lib/animal-poems-rag.ts` - RAG database with Jim Vanas wildlife poetry
+- `lib/wildlife-rag-service.ts` - Vectorize RAG service for wildlife population and regional data
 - `components/ai-elements/` - Pre-built conversation UI components
 - `components/roadrunner-loader.tsx` - Looney Tunes inspired loading animation
 
 ### Three-Agent AI System
 - **Agent 1 (Location)**: Processes user location → fetches local wildlife
 - **Agent 2 (Organizations)**: Validates animal selection → finds conservation groups
-- **Agent 3 (Poetry)**: Generates educational wildlife poems 5 seconds after organizations
+- **Agent 3 (Information)**: Retrieves detailed wildlife information using RAG database 5 seconds after organizations
 - **Guardrails**: Strict input validation to ensure proper conversation flow
 - **Session Management**: Persistent state between conversation steps
 
@@ -67,11 +67,11 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 
 ### Key Files
 - `app/api/chat/route.ts` - Main conversation logic with guardrails
-- `app/api/poem/route.ts` - Poetry generation with RAG database
+- `app/api/information/route.ts` - Wildlife information retrieval with RAG database
 - `lib/conservation-tools.ts` - Wildlife APIs and organization search
-- `lib/agent-prompts.ts` - Agent system prompts (including poetry agent)
-- `lib/animal-poems-rag.ts` - RAG database with Jim Vanas poetry examples
-- `app/page.tsx` - Chat interface with 3-agent flow and delayed poetry
+- `lib/agent-prompts.ts` - Agent system prompts (including information agent)
+- `lib/wildlife-rag-service.ts` - Vectorize RAG service for wildlife data
+- `app/page.tsx` - Chat interface with 3-agent flow and delayed information
 - `components/roadrunner-loader.tsx` - Looney Tunes loading animation
 
 ## Environment Setup
@@ -79,6 +79,7 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 Create `.env.local` with:
 ```
 OPENAI_API_KEY=your_openai_api_key_here
+VECTORIZE_TOKEN=your_vectorize_token_here
 ```
 
 ## Application Flow
@@ -88,7 +89,7 @@ OPENAI_API_KEY=your_openai_api_key_here
 3. **Animal Selection**: Second agent validates animals from provided list
 4. **Organization Search**: AI-powered search for relevant conservation groups
 5. **Results Display**: Structured organization information with links
-6. **Educational Poetry**: Third agent automatically generates poem 5 seconds after organizations
+6. **Wildlife Information**: Third agent automatically retrieves detailed information 5 seconds after organizations
 
 ## Development Notes
 
