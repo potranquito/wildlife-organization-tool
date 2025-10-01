@@ -25,6 +25,7 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 
 ### Key Directories
 - `app/` - Next.js App Router pages and API routes
+- `app/page.tsx` - Main UI with three-option interface and structured input validation
 - `app/api/chat/` - Three-agent AI conversation system with guardrails
 - `app/api/information/` - Wildlife information retrieval using Vectorize RAG database
 - `lib/conservation-tools.ts` - Wildlife data APIs and AI organization search
@@ -85,6 +86,45 @@ VECTORIZE_TOKEN=your_vectorize_token_here
 
 ## Application Flow
 
+### Initial User Interface (Three-Option Selection)
+At app launch, users see three clearly structured options:
+
+1. **Search by Animal Name**: Direct input for common or scientific animal names
+   - Field: `animal_name` (string)
+   - Validation: Non-empty string
+   - Example: "Florida Panther", "Puma concolor coryi"
+
+2. **Search by Location**: Structured location input with country-first validation
+   - Fields:
+     - `location_country` (string, required) - ISO code or full country name
+     - `location_state` (string, optional) - State/province name
+     - `location_city` (string, optional) - City name
+   - Validation Rules:
+     - Country must be entered before state/city
+     - If user attempts state/city without country: Display inline error
+     - Error message: "Please enter country first (e.g., US or United States)"
+     - Error display: Red text directly below input field
+     - User input is preserved for correction
+   - Input flow: Country → State (optional) → City (optional)
+   - Example: "United States" → "Florida" → "Miami"
+
+3. **Surprise Me (Random Animal)**: No input required, random animal selection
+
+### Validation and Error Feedback
+
+#### Location Input Validation
+- **Trigger**: User attempts to enter `location_state` or `location_city` when `location_country` is empty
+- **Action**:
+  - Display inline error below affected field
+  - Error text color: Red (#DC2626)
+  - Error background: Light red (#FEE2E2)
+  - Keep user input visible
+  - Disable state/city fields until country is entered
+- **Error Message Format**: "⚠️ Please enter country first (e.g., US or United States)"
+- **Success State**: Clear error message when country is entered
+
+### Conversation Flow (After Mode Selection)
+
 1. **User Input Validation**: First agent validates location inputs
 2. **Wildlife Discovery**: Fetch diverse species from iNaturalist + GBIF
 3. **Animal Selection**: Second agent validates animals from provided list
@@ -94,8 +134,18 @@ VECTORIZE_TOKEN=your_vectorize_token_here
 
 ## Development Notes
 
+### UX Design Principles
+- **Immediate Feedback**: Validation errors display instantly at field level
+- **Efficient Correction**: User input preserved for quick fixes
+- **Guided Input**: Disabled fields prevent invalid input sequences
+- **Contextual Errors**: Error messages appear directly below affected fields
+- **Clear Hierarchy**: Country required before state/city inputs
+
+### Technical Implementation
 - Uses session-based conversation state management
 - Implements strict guardrails to prevent invalid user inputs
+- Three-option interface with mode-based state management
+- Inline validation with real-time error feedback
 - All API integrations include error handling and fallbacks
 - UI components styled for wildlife conservation theme
 - TypeScript types ensure data consistency across agents

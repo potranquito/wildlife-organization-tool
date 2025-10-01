@@ -23,12 +23,24 @@ import {
 } from '@/lib/config';
 
 // Simple in-memory session storage (in production, use Redis or database)
-const sessions = new Map<string, {
+// Use global variable to persist sessions across hot reloads in development
+type SessionData = {
   location?: Location,
   species?: Species[],
-  step: 'location' | 'disambiguation' | 'animal' | 'completed',
-  disambiguationOptions?: DisambiguationOption[]
-}>();
+  selectedAnimal?: Species,
+  step: 'initial' | 'location' | 'disambiguation' | 'animal' | 'animal-location' | 'completed',
+  disambiguationOptions?: DisambiguationOption[],
+  mode?: 'location-first' | 'animal-first'
+};
+
+declare global {
+  var sessionStore: Map<string, SessionData> | undefined;
+}
+
+const sessions = globalThis.sessionStore ?? new Map<string, SessionData>();
+if (process.env.NODE_ENV !== 'production') {
+  globalThis.sessionStore = sessions;
+}
 
 
 export async function POST(request: NextRequest) {
@@ -43,18 +55,78 @@ export async function POST(request: NextRequest) {
 
     const lowerMessage = message.toLowerCase();
 
-    // Get or create session
-    let session = sessions.get(sessionId) || { step: 'location' };
-    sessions.set(sessionId, session);
+    // Check for "Surprise me" / random animal request
+    if (lowerMessage.includes('surprise')) {
+      // Pick a random endangered animal
+      const randomAnimals = [
+        { name: 'African Elephant', location: 'Kenya', scientificName: 'Loxodonta africana' },
+        { name: 'Giant Panda', location: 'China', scientificName: 'Ailuropoda melanoleuca' },
+        { name: 'Bengal Tiger', location: 'India', scientificName: 'Panthera tigris tigris' },
+        { name: 'Polar Bear', location: 'Canada', scientificName: 'Ursus maritimus' },
+        { name: 'Blue Whale', location: 'Pacific Ocean', scientificName: 'Balaenoptera musculus' },
+        { name: 'Mountain Gorilla', location: 'Rwanda', scientificName: 'Gorilla beringei beringei' },
+        { name: 'Sea Turtle', location: 'Australia', scientificName: 'Cheloniidae' },
+        { name: 'Gray Wolf', location: 'United States', scientificName: 'Canis lupus' }
+      ];
 
-    // If session is completed (after poem), restart on any new input
-    if (session.step === 'completed') {
-      console.log('Session completed, restarting for new conversation');
-      session.step = 'location';
-      delete session.location;
-      delete session.species;
-      delete session.disambiguationOptions;
+      const random = randomAnimals[Math.floor(Math.random() * randomAnimals.length)];
+
+      console.log(`🎲 RANDOM ANIMAL SELECTED: ${random.name}`);
+
+      // Create a fake location for the random animal
+      const fakeLocation: Location = {
+        displayName: random.location,
+        country: random.location,
+        latitude: 0,
+        longitude: 0
+      };
+
+      // Create species object
+      const randomSpecies: Species = {
+        commonName: random.name,
+        scientificName: random.scientificName,
+        conservationStatus: 'Endangered'
+      };
+
+      // Search for organizations
+      console.log(`🏢 SEARCHING ORGANIZATIONS for random animal: ${random.name}`);
+      const organizations = await findConservationOrganizations(randomSpecies, fakeLocation);
+      console.log(`🔍 FOUND ${organizations.length} organizations for ${random.name}`);
+
+      let response = `🎲 **Random Endangered Animal: ${random.name}**\n\n*${random.scientificName}* - Found in ${random.location}\n\n`;
+      response += `**Conservation Organizations:**\n\n`;
+
+      if (organizations.length > 0) {
+        organizations.forEach((org) => {
+          response += `• **${org.name}**\n`;
+          if (org.website && org.website !== '#') {
+            response += `  ${org.website}\n`;
+          }
+          response += `\n`;
+        });
+        response += `Contact these organizations to help protect the ${random.name}.`;
+      } else {
+        response += `• Contact your local wildlife conservation groups\n• Support international wildlife funds\n\nThese can help protect the ${random.name}.`;
+      }
+
+      return NextResponse.json({ response });
+    }
+
+    // Get or create session
+    let session = sessions.get(sessionId);
+    if (!session) {
+      console.log(`📝 NEW SESSION CREATED: ${sessionId}`);
+      session = { step: 'initial' };
       sessions.set(sessionId, session);
+    } else {
+      console.log(`📝 EXISTING SESSION FOUND: ${sessionId}, step: ${session.step}, mode: ${session.mode}, hasLocation: ${!!session.location}, hasSpecies: ${!!session.species}`);
+    }
+
+    // If session is completed (after organizations), inform user to use reset button
+    if (session.step === 'completed') {
+      console.log('Session completed - user should reset to start new search');
+      const response = `✅ **Your search is complete!**\n\nTo search for another animal:\n• Click the **Reset** button to start a new search\n• Or refresh the page to begin again`;
+      return NextResponse.json({ response });
     }
 
     // Check if user is providing a new location while in animal selection mode
@@ -87,12 +159,21 @@ export async function POST(request: NextRequest) {
         }
 
         // Try normalized matches (remove punctuation, normalize spaces)
-        const normalizedUserInput = userInput.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-        const normalizedCommonName = commonNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
-        const normalizedScientificName = scientificNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ');
+        const normalizedUserInput = userInput.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+        const normalizedCommonName = commonNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+        const normalizedScientificName = scientificNameLower.replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
 
-        return normalizedUserInput === normalizedCommonName ||
-               normalizedUserInput === normalizedScientificName;
+        if (normalizedUserInput === normalizedCommonName || normalizedUserInput === normalizedScientificName) {
+          return true;
+        }
+
+        // Try partial matches for compound names (e.g., "macaque" should match "Long-tailed Macaque")
+        if (normalizedUserInput.length >= 4 &&
+            (normalizedCommonName.includes(normalizedUserInput) || normalizedUserInput.includes(normalizedCommonName))) {
+          return true;
+        }
+
+        return false;
       });
 
       if (isLocationInput && !isAnimalFromList) {
@@ -192,8 +273,275 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ response });
     }
 
+    // INITIAL CLASSIFIER: Determine if input is animal or location
+    if (session.step === 'initial') {
+      console.log(`🔍 CLASSIFYING INPUT: "${message}"`);
+
+      // Use AI to classify the input
+      const { openai } = await import('@ai-sdk/openai');
+      const { generateText } = await import('ai');
+
+      const classificationResult = await generateText({
+        model: openai('gpt-4o-mini'),
+        prompt: `Classify this user input as either an ANIMAL name or a LOCATION:
+
+Input: "${message}"
+
+Rules:
+- If it's clearly an animal species name (common or scientific), respond with: ANIMAL
+- If it's a place (city, state, country, region), respond with: LOCATION
+- If ambiguous, prefer ANIMAL if it contains animal-related words
+
+Respond with ONLY one word: ANIMAL or LOCATION`,
+        temperature: 0.1
+      });
+
+      const classification = classificationResult.text.trim().toUpperCase();
+      console.log(`🤖 CLASSIFICATION RESULT: ${classification}`);
+
+      if (classification === 'ANIMAL') {
+        // Animal-first mode: Search for where this animal lives
+        console.log(`🐾 ANIMAL-FIRST MODE: Searching for "${message}"`);
+
+        session.mode = 'animal-first';
+        session.step = 'animal-location';
+        sessions.set(sessionId, session);
+
+        // Search for both animal information AND organizations in parallel
+        const { OpenAI } = await import('openai');
+        const openaiClient = new OpenAI({
+          apiKey: process.env.OPENAI_API_KEY
+        });
+
+        console.log(`🔄 PARALLEL SEARCH: Finding information + organizations + locations for "${message}"`);
+
+        // Run both searches in parallel
+        const [animalSearchResult, organizationPreSearchResult] = await Promise.all([
+          // Search 1: Animal information + habitat locations
+          openaiClient.chat.completions.create({
+            model: 'gpt-4o-search-preview',
+            web_search_options: {},
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a wildlife expert. Search the web for current, accurate information about animal species and their habitats.'
+              },
+              {
+                role: 'user',
+                content: `Search for information about "${message}" (animal species).
+
+Find:
+1. Scientific name if available
+2. Conservation status (IUCN Red List)
+3. Primary geographic locations where this species is found (countries, states/provinces)
+4. Current population status
+
+Format:
+Common Name: [name]
+Scientific Name: [name]
+Conservation Status: [status]
+Found in: [list of countries/regions/states where it's commonly found - be specific]
+Population: [brief note on numbers/trend]
+
+If this is not a valid animal species, respond with: NOT_AN_ANIMAL`
+              }
+            ]
+          }),
+          // Search 2: Pre-search for conservation organizations (worldwide)
+          openaiClient.chat.completions.create({
+            model: 'gpt-4o-search-preview',
+            web_search_options: {},
+            messages: [
+              {
+                role: 'system',
+                content: 'You are a conservation organization expert. Search the web for current conservation organizations.'
+              },
+              {
+                role: 'user',
+                content: `Find 3-5 major conservation organizations that work with "${message}".
+
+List format:
+- Organization Name
+  Website: [URL]
+  Focus: [brief description]
+
+Include international, national, and regional groups.`
+              }
+            ]
+          })
+        ]);
+
+        const animalInfo = animalSearchResult.choices[0]?.message?.content || '';
+        const preliminaryOrgs = organizationPreSearchResult.choices[0]?.message?.content || '';
+
+        console.log(`🔍 ANIMAL SEARCH RESULT:`, animalInfo);
+        console.log(`🏢 PRELIMINARY ORGANIZATIONS FOUND:`, preliminaryOrgs.substring(0, 200) + '...');
+
+        // Check if it's a valid animal
+        if (animalInfo.includes('NOT_AN_ANIMAL')) {
+          // Fall back to location mode
+          session.mode = 'location-first';
+          session.step = 'location';
+          sessions.set(sessionId, session);
+
+          const response = `🌍 **I couldn't find an animal called "${message}"**\n\nLet's try entering a location instead!\n\nPlease enter your location in one of these formats:\n\n• **City and state**: "Miami, Florida"\n• **City and country**: "Toronto, Canada"\n• **Just a city**: "Seattle"\n• **Just a state**: "California"\n• **A country**: "Canada"`;
+          return NextResponse.json({ response });
+        }
+
+        // Store animal information
+        session.selectedAnimal = {
+          id: message.toLowerCase().replace(/\s+/g, '-'),
+          commonName: message,
+          scientificName: 'Unknown',
+          conservationStatus: 'Unknown'
+        };
+        sessions.set(sessionId, session);
+
+        // Show the user the animal info with preliminary organizations
+        let response = `🐾 **${message}**\n\n${animalInfo}\n\n---\n\n**🏢 Conservation Organizations (Preliminary Results):**\n\n${preliminaryOrgs}\n\n---\n\n**Want more specific results?**\n\n1. **Enter a specific location** to find organizations in that area (e.g., "California", "Arizona", "United States")\n2. **Type "worldwide"** to search for more global organizations\n3. **Select a specific subspecies** if multiple were listed above`;
+
+        return NextResponse.json({ response });
+      } else {
+        // Location-first mode (default)
+        session.mode = 'location-first';
+        session.step = 'location';
+        sessions.set(sessionId, session);
+        // Fall through to location processing
+      }
+    }
+
+    // ANIMAL-FIRST MODE: Handle location selection OR refined animal name after animal is chosen
+    if (session.step === 'animal-location' && session.selectedAnimal) {
+      const lowerMessage = message.toLowerCase().trim();
+
+      // Check if user is providing a more specific animal name (e.g., "Agassiz's Desert Tortoise" instead of just "desert tortoise")
+      // Use AI to detect if this is a refined animal name
+      const { openai } = await import('@ai-sdk/openai');
+      const { generateText } = await import('ai');
+
+      const refinementCheck = await generateText({
+        model: openai('gpt-4o-mini'),
+        prompt: `The user previously searched for "${session.selectedAnimal.commonName}" and we showed them subspecies/variants.
+
+Now they responded with: "${message}"
+
+Is this:
+A) A more specific animal name/subspecies (e.g., "Agassiz's Desert Tortoise", "Morafka's Desert Tortoise")
+B) A location (e.g., "California", "Florida", "worldwide")
+
+Respond with ONLY one word: ANIMAL or LOCATION`,
+        temperature: 0.1
+      });
+
+      const refinementType = refinementCheck.text.trim().toUpperCase();
+      console.log(`🔍 REFINEMENT CHECK: "${message}" classified as ${refinementType}`);
+
+      if (refinementType === 'ANIMAL') {
+        // User is specifying a more specific animal - search for organizations worldwide
+        console.log(`🐾 REFINED ANIMAL SEARCH: "${message}"`);
+
+        // Update the selected animal to the more specific name
+        session.selectedAnimal.commonName = message;
+        sessions.set(sessionId, session);
+
+        // Create a global location for worldwide search
+        const globalLocation: Location = {
+          displayName: 'Worldwide',
+          country: 'Global',
+          latitude: 0,
+          longitude: 0
+        };
+
+        const organizations = await findConservationOrganizations(session.selectedAnimal, globalLocation);
+
+        let response = `**${message} Conservation Organizations:**\n\n`;
+        if (organizations.length > 0) {
+          organizations.forEach((org) => {
+            response += `- **${org.name}**\n`;
+            if (org.website && org.website !== '#') {
+              response += `  ${org.website}\n`;
+            }
+            response += `\n`;
+          });
+          response += `Contact these organizations to help protect ${message}.`;
+        } else {
+          response += `No specific organizations found. Try searching online for "${message} conservation" for local and international groups.`;
+        }
+
+        session.step = 'completed';
+        sessions.set(sessionId, session);
+
+        return NextResponse.json({ response });
+      }
+
+      // Check if user wants worldwide organizations
+      if (lowerMessage.includes('worldwide') || lowerMessage.includes('all location')) {
+        console.log(`🌍 WORLDWIDE ORGANIZATIONS requested for ${session.selectedAnimal.commonName}`);
+
+        // Create a fake global location
+        const globalLocation: Location = {
+          displayName: 'Worldwide',
+          country: 'Global',
+          latitude: 0,
+          longitude: 0
+        };
+
+        const organizations = await findConservationOrganizations(session.selectedAnimal, globalLocation);
+
+        let response = `**${session.selectedAnimal.commonName} Conservation Organizations (Worldwide):**\n\n`;
+        if (organizations.length > 0) {
+          organizations.forEach((org) => {
+            response += `- **${org.name}**\n`;
+            if (org.website && org.website !== '#') {
+              response += `  ${org.website}\n`;
+            }
+            response += `\n`;
+          });
+          response += `Contact these organizations to help protect ${session.selectedAnimal.commonName}.`;
+        } else {
+          response += `No specific organizations found. Try searching online for "${session.selectedAnimal.commonName} conservation" for local and international groups.`;
+        }
+
+        session.step = 'completed';
+        sessions.set(sessionId, session);
+
+        return NextResponse.json({ response });
+      }
+
+      // User provided a location - geocode it directly
+      const geocodedLocation = await geocodeLocation(message);
+
+      if (geocodedLocation) {
+        console.log(`📍 LOCATION SELECTED: ${geocodedLocation.displayName} for ${session.selectedAnimal.commonName}`);
+
+        const organizations = await findConservationOrganizations(session.selectedAnimal, geocodedLocation);
+
+        let response = `**${session.selectedAnimal.commonName} Conservation Organizations in ${geocodedLocation.city || geocodedLocation.state || geocodedLocation.country}:**\n\n`;
+        if (organizations.length > 0) {
+          organizations.forEach((org) => {
+            response += `- **${org.name}**\n`;
+            if (org.website && org.website !== '#') {
+              response += `  ${org.website}\n`;
+            }
+            response += `\n`;
+          });
+          response += `Contact these organizations to help protect ${session.selectedAnimal.commonName}.`;
+        } else {
+          response += `No specific organizations found in this area. Try contacting your local wildlife department or searching for "${session.selectedAnimal.commonName} conservation ${locationResult.location.country}".`;
+        }
+
+        session.step = 'completed';
+        sessions.set(sessionId, session);
+
+        return NextResponse.json({ response });
+      } else {
+        const response = `🌍 **Could not understand that location.**\n\nPlease enter:\n• A specific location (e.g., "California", "Florida", "Singapore")\n• Or type "worldwide" to see all organizations for ${session.selectedAnimal.commonName}`;
+        return NextResponse.json({ response });
+      }
+    }
+
     // AGENT 1: Location → Animal List (Enhanced with disambiguation)
-    if (session.step === 'location' || !session.location) {
+    if (session.step === 'location') {
       // Use the new enhanced location agent
       const locationResult = await parseUserLocation(message);
 
@@ -221,17 +569,23 @@ export async function POST(request: NextRequest) {
 
         const locationDisplayName = locationResult.location.city || locationResult.location.state || locationResult.location.country || 'this location';
         let response = hasEndangeredSpecies
-          ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
-          : `**Wildlife near ${locationDisplayName}:**\n\n`;
+          ? `**🔴 Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
+          : `**🌿 Wildlife near ${locationDisplayName}:**\n\n`;
 
         species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
           const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
             ? ` (${animal.conservationStatus})`
             : '';
-          response += `- ${animal.commonName}${status}\n`;
+          response += `• ${animal.commonName}${status}\n`;
         });
 
-        response += `\n**⚠️ IMPORTANT: You must select one of the animals listed above.**\n\nType the **animal name only** (without conservation status) to find conservation organizations. For example: "Florida Panther" or "West Indian Manatee".`;
+        // Get first 3 animal names as examples
+        const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+        const exampleText = exampleAnimals.length > 0
+          ? `\n**Examples from your location:**\n${exampleAnimals.map(name => `"${name}"`).join(' or ')}`
+          : '';
+
+        response += `\n\n⚠️ **IMPORTANT: You MUST select ONE animal from the list above.**\n\n📋 **Instructions:**\n1. Type the animal name EXACTLY as shown\n2. Do NOT include the conservation status (the part in parentheses)\n3. The system will then search for organizations protecting that species${exampleText}`;
 
         return NextResponse.json({ response });
 
@@ -271,9 +625,16 @@ export async function POST(request: NextRequest) {
           const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
             ? ` (${animal.conservationStatus})`
             : '';
-          response += `- **${animal.commonName}**${status}\n`;
+          response += `• **${animal.commonName}**${status}\n`;
         });
-        response += `\n**⚠️ You must select one of the animals listed above.**\n\nType the **exact name** of one of these animals to find conservation organizations.`;
+
+        // Get first 3 animal names as examples
+        const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+        const exampleText = exampleAnimals.length > 0
+          ? `\n**Try one of these:**\n${exampleAnimals.map(name => `"${name}"`).join(' or ')}`
+          : '';
+
+        response += `\n\n⚠️ **You MUST select ONE animal from this list.**\n\n📋 **Instructions:**\n1. Type the animal name EXACTLY as shown above\n2. Do NOT include conservation status\n3. We'll find organizations protecting that species${exampleText}`;
         return NextResponse.json({ response });
       }
 
@@ -371,17 +732,26 @@ export async function POST(request: NextRequest) {
       } else {
         // Animal not recognized, show available options from the original list ONLY
         if (species.length > 0) {
-          let response = `❌ **"${message}" is not valid.**\n\n**You MUST choose from this exact list** of animals found near ${session.location.city || session.location.state || session.location.country}:\n\n`;
+          let response = `❌ **"${message}" was not found in your location's wildlife list.**\n\n`;
+          response += `⚠️ **Remember: You can ONLY select animals from the list below** (found near ${session.location.city || session.location.state || session.location.country}):\n\n`;
+
           species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
               : '';
-            response += `- **${animal.commonName}**${status}\n`;
+            response += `• **${animal.commonName}**${status}\n`;
           });
-          response += `\n**Please type the exact name** of one of these animals to find conservation organizations.`;
+
+          // Add helpful examples
+          const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+          if (exampleAnimals.length > 0) {
+            response += `\n\n💡 **Try copying one of these exactly:**\n${exampleAnimals.map(name => `"${name}"`).join(', ')}`;
+          }
+
+          response += `\n\n📝 **Tip:** Copy and paste the animal name to avoid typos!`;
           return NextResponse.json({ response });
         } else {
-          const response = `I couldn't find any animals for your location. Please try a different location.`;
+          const response = `❌ **No animals found for your location.**\n\nPlease start over and try a different location.`;
           return NextResponse.json({ response });
         }
       }

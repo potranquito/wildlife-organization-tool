@@ -126,23 +126,15 @@ export async function findSpeciesByLocation(location: Location): Promise<Species
       source: ns.source
     }));
 
-    console.log(`Found ${species.length} species from real API data for ${locationName}`);
+    console.log(`Found ${species.length} endangered species from real API data for ${locationName}`);
 
-    // If we have good results from APIs, return them
-    if (species.length >= 3) {
-      return species.slice(0, 8);
-    }
-
-    // Fallback to enhanced search if real APIs don't return enough data
-    console.log('Real API data insufficient, falling back to enhanced search');
-    return await enhancedWildlifeSearch(location);
+    // Return species from APIs only (no fallback to AI search)
+    return species.slice(0, 8);
 
   } catch (error) {
     console.error('Real API wildlife lookup error:', error);
-
-    // Fallback to enhanced AI-powered search
-    console.log('Real APIs failed, trying enhanced multi-tier approach');
-    return await enhancedWildlifeSearch(location);
+    // Return empty array if APIs fail
+    return [];
   }
 }
 
@@ -268,29 +260,31 @@ async function enhancedWildlifeSearch(location: Location): Promise<Species[]> {
       try {
         const result = await generateText({
           model: openai('gpt-4o'),
-          system: `You are a wildlife research expert with access to current biodiversity databases. Provide accurate, real-time information about wildlife species found in specific locations.`,
-          prompt: `Search for wildlife species in: "${query}"
+          system: `You are a wildlife conservation expert with access to current IUCN Red List and biodiversity databases. Provide accurate information about ENDANGERED and THREATENED species only.`,
+          prompt: `Search for ENDANGERED and THREATENED wildlife species in: "${query}"
 
-Find 8-12 different wildlife species (mammals, birds, reptiles, amphibians) that are currently found in ${locationName}. For each species, provide:
+Find 8-12 different ENDANGERED, VULNERABLE, or THREATENED wildlife species (mammals, birds, reptiles, amphibians) that are currently found in ${locationName}. For each species, provide:
 
 Format:
 1. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status if known, otherwise "Data Deficient"]
+Conservation Status: [Critically Endangered, Endangered, Vulnerable, or Near Threatened]
 Type: [mammal/bird/reptile/amphibian]
 
 2. Common Name
 Scientific Name: [Scientific name]
-Conservation Status: [Status if known, otherwise "Data Deficient"]
+Conservation Status: [Critically Endangered, Endangered, Vulnerable, or Near Threatened]
 Type: [mammal/bird/reptile/amphibian]
 
-Focus on:
-- Species actually found in the geographic area of ${locationName}
-- Mix of common and notable species
-- Include conservation status when known
+CRITICAL REQUIREMENTS:
+- ONLY include species with conservation status: Critically Endangered, Endangered, Vulnerable, or Near Threatened
+- DO NOT include common species or species with "Data Deficient" or "Least Concern" status
+- Species MUST actually be found in the geographic area of ${locationName}
+- Include conservation status from IUCN Red List when available
 - Diverse taxonomic groups (mammals, birds, reptiles, amphibians)
+- Focus on species that have active conservation organizations
 
-Provide real species that exist in this location based on current biodiversity data.`
+Provide real endangered/threatened species that exist in this location based on current conservation data.`
         });
 
         const speciesFromSearch = parseWildlifeSearchResults(result.text, location);
@@ -1455,62 +1449,190 @@ async function getGovernmentConservationOrgs(location: Location): Promise<Organi
     const locationName = location.city || location.state || location.country || 'this location';
     console.log(`Searching for government wildlife agencies in ${locationName}`);
 
-    // Import OpenAI and generateText
-    const { openai } = await import('@ai-sdk/openai');
-    const { generateText } = await import('ai');
+    // Use OpenAI WebSearch to find real, current government agencies
+    const { OpenAI } = await import('openai');
+    const openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
 
-    const result = await generateText({
-      model: openai('gpt-4o'),
-      system: `You are an expert on government wildlife agencies and environmental departments worldwide. Provide accurate, current information about official government organizations responsible for wildlife conservation.`,
-      prompt: `Find the official government wildlife and environmental agencies for ${locationName}. Include:
+    const searchResult = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-search-preview',
+      web_search_options: {},
+      messages: [
+        {
+          role: 'system',
+          content: 'You are an expert on government wildlife agencies. Search the web for current, official government organizations responsible for wildlife conservation.'
+        },
+        {
+          role: 'user',
+          content: `Search for official government wildlife and environmental agencies in ${locationName}.
 
-1. State/Provincial wildlife departments (if applicable)
-2. Federal/National wildlife services
-3. Environmental protection agencies
-4. Parks and wildlife departments
+Find agencies that:
+- Manage wildlife conservation and protection
+- Oversee national/state parks and wildlife refuges
+- Issue wildlife licenses and permits
+- Enforce wildlife protection laws
+- Protect endangered species
 
 For each agency, provide:
 
-Format:
 1. Agency Name
-Website: [Official website URL]
+Website: [Official .gov or official government website URL]
 Description: [Brief description of their wildlife/conservation role]
 Location: [Geographic scope - state/province/country]
 
 2. Agency Name
-Website: [Official website URL]
+Website: [Official .gov or official government website URL]
 Description: [Brief description of their wildlife/conservation role]
 Location: [Geographic scope - state/province/country]
 
-Focus on official government agencies that:
-- Manage wildlife conservation
-- Issue hunting/fishing licenses
-- Protect endangered species
-- Manage state/national parks and wildlife refuges
-- Enforce wildlife protection laws
-
-Provide real, official government agencies with their actual websites.`
+Focus on official government agencies only (not NGOs). Verify they have official websites.`
+        }
+      ]
     });
 
-    console.log(`Government agency search result:`, result.text);
+    const resultText = searchResult.choices[0]?.message?.content || '';
+    console.log(`Government agency search result:`, resultText);
 
     // Parse the search results to extract organizations
-    const govOrgs = extractOrganizationsFromText(result.text, location);
+    const govOrgs = extractOrganizationsFromText(resultText, location);
     return govOrgs.slice(0, 3); // Return top 3 government agencies
 
   } catch (error) {
     console.error('Government agency search failed:', error);
-    // Fallback: return generic agencies
+    // Fallback: return hardcoded agencies based on country
+    return getHardcodedGovernmentAgencies(location);
+  }
+}
+
+function getHardcodedGovernmentAgencies(location: Location): Organization[] {
+  const country = location.country?.toLowerCase() || location.displayName.toLowerCase();
+
+  // Singapore
+  if (country.includes('singapore')) {
     return [
       {
-        name: 'Local Wildlife Department',
-        website: '',
-        description: 'Contact your local wildlife management agency',
-        location: location.city || location.state || location.country || 'Local',
+        name: 'National Parks Board (NParks)',
+        website: 'https://www.nparks.gov.sg',
+        description: 'Singapore\'s national authority for managing parks, nature reserves, and wildlife conservation',
+        location: 'Singapore',
+        contactInfo: ''
+      },
+      {
+        name: 'Wildlife Reserves Singapore',
+        website: 'https://www.wrs.com.sg',
+        description: 'Leading wildlife conservation organization operating Singapore Zoo, Night Safari, River Wonders, and Bird Paradise',
+        location: 'Singapore',
+        contactInfo: ''
+      },
+      {
+        name: 'Nature Society (Singapore)',
+        website: 'https://www.nss.org.sg',
+        description: 'Singapore\'s premier nature conservation NGO working to protect biodiversity',
+        location: 'Singapore',
         contactInfo: ''
       }
     ];
   }
+
+  // United States
+  if (country.includes('united states') || country.includes('usa') || country.includes('america')) {
+    const stateName = location.state || 'your state';
+    return [
+      {
+        name: `${stateName} Department of Fish and Wildlife`,
+        website: '#',
+        description: `State agency managing wildlife conservation in ${stateName}`,
+        location: stateName,
+        contactInfo: ''
+      },
+      {
+        name: 'U.S. Fish and Wildlife Service',
+        website: 'https://www.fws.gov',
+        description: 'Federal agency managing wildlife conservation and endangered species',
+        location: 'United States',
+        contactInfo: ''
+      },
+      {
+        name: 'National Wildlife Federation',
+        website: 'https://www.nwf.org',
+        description: 'America\'s largest wildlife conservation organization',
+        location: 'United States',
+        contactInfo: ''
+      }
+    ];
+  }
+
+  // Canada
+  if (country.includes('canada')) {
+    return [
+      {
+        name: 'Environment and Climate Change Canada',
+        website: 'https://www.canada.ca/en/environment-climate-change.html',
+        description: 'Federal department managing wildlife and environmental protection',
+        location: 'Canada',
+        contactInfo: ''
+      },
+      {
+        name: 'Canadian Wildlife Federation',
+        website: 'https://cwf-fcf.org',
+        description: 'National conservation organization protecting Canadian wildlife',
+        location: 'Canada',
+        contactInfo: ''
+      }
+    ];
+  }
+
+  // United Kingdom
+  if (country.includes('united kingdom') || country.includes('england') || country.includes('scotland') || country.includes('wales')) {
+    return [
+      {
+        name: 'Natural England',
+        website: 'https://www.gov.uk/government/organisations/natural-england',
+        description: 'Government agency protecting nature and wildlife in England',
+        location: 'United Kingdom',
+        contactInfo: ''
+      },
+      {
+        name: 'The Wildlife Trusts',
+        website: 'https://www.wildlifetrusts.org',
+        description: 'UK\'s leading conservation charity protecting wildlife',
+        location: 'United Kingdom',
+        contactInfo: ''
+      }
+    ];
+  }
+
+  // Australia
+  if (country.includes('australia')) {
+    return [
+      {
+        name: 'Department of Climate Change, Energy, the Environment and Water',
+        website: 'https://www.dcceew.gov.au',
+        description: 'Australian government department managing environmental protection',
+        location: 'Australia',
+        contactInfo: ''
+      },
+      {
+        name: 'Australian Wildlife Conservancy',
+        website: 'https://www.australianwildlife.org',
+        description: 'Largest private owner of conservation land in Australia',
+        location: 'Australia',
+        contactInfo: ''
+      }
+    ];
+  }
+
+  // Generic fallback
+  return [
+    {
+      name: 'Local Wildlife Conservation Authority',
+      website: '#',
+      description: 'Contact your local wildlife management agency or environmental department',
+      location: location.city || location.country || 'Local area',
+      contactInfo: 'Search online for "[your location] wildlife department"'
+    }
+  ];
 }
 
 function getHabitatsForLocation(location: Location): string[] {

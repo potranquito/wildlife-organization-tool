@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Wildlife Organization Finder",
-  description: "Discover wildlife in your area and find conservation organizations working to protect them",
+  title: "Wildlife Extinction Timer",
+  description: "Track extinction timelines and support conservation efforts",
 };
 
 export default function RootLayout({

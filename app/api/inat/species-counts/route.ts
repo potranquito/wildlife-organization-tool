@@ -32,6 +32,13 @@ export async function GET(req: NextRequest) {
   const iconicTaxa = searchParams.get('iconic_taxa') ?? 'Mammalia,Aves,Reptilia,Amphibia';
   qs.set('iconic_taxa', iconicTaxa);
 
+  // CRITICAL: Filter for threatened/endangered species only
+  // This includes taxa with IUCN equivalent of NT (Near Threatened) or worse
+  const threatened = searchParams.get('threatened');
+  if (threatened === 'true' || threatened === '1') {
+    qs.set('threatened', 'true');
+  }
+
   // Pagination
   qs.set('per_page', searchParams.get('per_page') ?? '100');
   qs.set('page', searchParams.get('page') ?? '1');
