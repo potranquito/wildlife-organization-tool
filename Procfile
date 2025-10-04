@@ -1,1 +1,1 @@
-web: npx tsx mcp-server/index.ts
+web: pnpm start

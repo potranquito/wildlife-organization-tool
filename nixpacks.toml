@@ -4,5 +4,8 @@ nixPkgs = ["nodejs", "pnpm"]
 [phases.install]
 cmds = ["pnpm install"]
 
+[phases.build]
+cmds = ["pnpm build"]
+
 [start]
-cmd = "npx tsx mcp-server/index.ts"
+cmd = "pnpm start"
