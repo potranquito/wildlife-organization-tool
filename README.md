@@ -114,14 +114,18 @@ graph TD
 
 ### Data Sources & APIs
 - **OpenStreetMap Nominatim API** - Global geocoding and reverse geocoding
+- **iNaturalist API** - Research-grade wildlife observations
+- **GBIF API** - Global biodiversity occurrence data
+- **IUCN Red List API** - Conservation status data
+- **Wikipedia REST API** - Species descriptions and images
 - **OpenAI Chat Completions API** - Natural language processing
-- **Custom Wildlife Search** - AI-powered biodiversity discovery
-- **Conservation Organization Search** - Real-time organization discovery
+- **OpenAI WebSearch (gpt-4o-search-preview)** - Real-time organization discovery
 
 ### Development Tools
 - **pnpm** - Fast, disk space efficient package manager
 - **ESLint & TypeScript** - Code quality and type safety
 - **PostCSS** - CSS processing and optimization
+- **Model Context Protocol (MCP)** - Standardized tool interface for AI agents
 
 ## 🔌 API Architecture
 
@@ -129,8 +133,11 @@ graph TD
 
 | API | Purpose | Implementation | Impact |
 |-----|---------|----------------|---------|
-| **OpenStreetMap Nominatim** | Geocoding & location validation | Direct HTTP requests to nominatim.openstreetmap.org | Accurate location processing, coordinate mapping |
-| **Wikipedia REST API** | Species information & images | Requests to en.wikipedia.org/api/rest_v1 | Real descriptions and visual content |
+| **OpenStreetMap Nominatim** | Geocoding & location validation | Direct HTTP + MCP server | Accurate location processing, coordinate mapping |
+| **iNaturalist API** | Wildlife observation data | Direct HTTP + MCP server | Research-grade species observations |
+| **GBIF API** | Biodiversity occurrence data | Direct HTTP + MCP server | Global species distribution |
+| **IUCN Red List API** | Conservation status | Direct HTTP + MCP server | Official conservation classifications |
+| **Wikipedia REST API** | Species information & images | Direct HTTP + MCP server | Real descriptions and visual content |
 | **OpenAI GPT-4** | AI processing & web search | Multiple models (gpt-4o, gpt-4o-search-preview) | Intelligent search and real-time data |
 
 ### Enhanced Search Systems
@@ -146,7 +153,10 @@ graph TD
 | Endpoint | Method | Purpose | Request/Response |
 |----------|--------|---------|------------------|
 | `/api/chat` | POST | Main conversation handler | `{message: string, sessionId?: string}` |
-| `/api/poem` | POST | Educational poetry generation | `{animal: string}` |
+| `/api/information` | POST | Wildlife information retrieval | `{animal: string, scientificName: string}` |
+| `/api/mcp-demo` | POST/GET | MCP server testing and demo | `{action: string, data: object}` |
+| `/api/iucn/species-status` | GET | IUCN Red List status lookup | `?scientificName=...` |
+| `/api/wikimedia/animal` | POST | Wikipedia animal data | `{animalName: string}` |
 
 ### Data Flow Architecture
 
@@ -236,6 +246,8 @@ cp .env.example .env.local
 ```bash
 # .env.local
 OPENAI_API_KEY=your_openai_api_key_here
+IUCN_API_KEY=your_iucn_api_key_here  # Optional: For IUCN Red List data
+VECTORIZE_TOKEN=your_vectorize_token_here  # Optional: For RAG database
 ```
 
 ### Development
@@ -248,6 +260,9 @@ pnpm build
 
 # Start production server
 pnpm start
+
+# Test MCP servers
+npx tsx scripts/test-mcp-servers.ts
 ```
 
 ### Accessing the Application
@@ -261,14 +276,20 @@ wildlife-finder/
 ├── app/                          # Next.js App Router
 │   ├── api/
 │   │   ├── chat/route.ts        # Main conversation handler & agent routing
-│   │   └── poem/route.ts        # Educational poetry generation
+│   │   ├── information/route.ts # Wildlife information retrieval (RAG)
+│   │   ├── mcp-demo/route.ts   # MCP server testing endpoint
+│   │   ├── iucn/               # IUCN Red List API integration
+│   │   ├── gbif/               # GBIF API integration
+│   │   ├── inat/               # iNaturalist API integration
+│   │   └── wikimedia/          # Wikipedia API integration
 │   ├── page.tsx                 # Main chat interface
 │   └── layout.tsx              # Root layout with metadata
 ├── lib/                         # Core business logic
-│   ├── conservation-tools.ts    # Wildlife & organization search
+│   ├── conservation-tools.ts    # Wildlife & organization search + Wikipedia tools
 │   ├── location-agent.ts       # Location processing & disambiguation
 │   ├── agent-prompts.ts        # AI agent system prompts
-│   ├── animal-poems-rag.ts     # RAG database for poetry
+│   ├── wildlife-rag-service.ts # Vectorize RAG service
+│   ├── mcp-client.ts           # MCP client integration
 │   ├── config.ts              # Application configuration
 │   └── utils.ts               # Utility functions
 ├── components/                  # React components
@@ -276,10 +297,62 @@ wildlife-finder/
 │   ├── ui/                     # shadcn/ui components
 │   ├── message-formatter.tsx   # Message rendering
 │   └── roadrunner-loader.tsx   # Loading animation
+├── mcp-servers/                # Model Context Protocol servers
+│   ├── wikipedia/              # Wikipedia MCP server
+│   │   ├── index.ts           # Server implementation
+│   │   └── package.json       # Server metadata
+│   └── species-fetcher/        # Species Fetcher MCP server
+│       ├── index.ts           # Server implementation
+│       └── package.json       # Server metadata
+├── scripts/                    # Development scripts
+│   └── test-mcp-servers.ts    # MCP server testing suite
 ├── public/                     # Static assets
-├── styles/                     # Global styles
 └── types/                      # TypeScript type definitions
 ```
+
+## 🔌 MCP Servers (Model Context Protocol)
+
+### Overview
+The project includes two MCP servers that provide standardized tool interfaces for AI agents:
+
+### Wikipedia MCP Server (`mcp-servers/wikipedia/`)
+**Tools:**
+- `search_wikipedia` - Search Wikipedia articles
+- `get_wikipedia_summary` - Get article summaries with images
+- `get_wikipedia_article` - Get full article HTML content
+- `extract_wikipedia_key_facts` - AI-powered fact extraction
+
+**Usage:**
+```typescript
+import { wikipediaMCP } from '@/lib/mcp-client';
+
+const summary = await wikipediaMCP.getSummary('Florida Panther');
+const facts = await wikipediaMCP.extractKeyFacts('Florida Panther', apiKey);
+```
+
+### Species Fetcher MCP Server (`mcp-servers/species-fetcher/`)
+**Tools:**
+- `geocode_location` - Convert location queries to coordinates
+- `find_species_by_location` - Find species using iNaturalist + GBIF
+- `get_species_info` - Get detailed species information
+- `get_iucn_status` - Get IUCN Red List conservation status
+- `search_conservation_organizations` - AI-powered org search
+
+**Usage:**
+```typescript
+import { speciesFetcherMCP } from '@/lib/mcp-client';
+
+const location = await speciesFetcherMCP.geocodeLocation('Miami, Florida');
+const species = await speciesFetcherMCP.findSpeciesByLocation(location);
+const status = await speciesFetcherMCP.getIUCNStatus('Puma concolor coryi', apiKey);
+```
+
+### MCP Architecture
+```
+Next.js App → MCP Client → MCP Servers (stdio) → External APIs
+```
+
+**Note:** MCP servers are optional development tools. The app works with direct API calls for production.
 
 ## 🔧 Configuration Management
 

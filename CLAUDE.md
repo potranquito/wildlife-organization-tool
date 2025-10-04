@@ -28,9 +28,13 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 - `app/page.tsx` - Main UI with three-option interface and structured input validation
 - `app/api/chat/` - Three-agent AI conversation system with guardrails
 - `app/api/information/` - Wildlife information retrieval using Vectorize RAG database
-- `lib/conservation-tools.ts` - Wildlife data APIs and AI organization search
+- `app/api/iucn/` - IUCN Red List API integration
+- `app/api/mcp-demo/` - MCP server testing endpoint
+- `lib/conservation-tools.ts` - Wildlife data APIs, Wikipedia tools, and AI organization search
 - `lib/agent-prompts.ts` - Agent system prompts and instructions
 - `lib/wildlife-rag-service.ts` - Vectorize RAG service for wildlife population and regional data
+- `lib/mcp-client.ts` - MCP client integration for Wikipedia and Species Fetcher servers
+- `mcp-servers/` - Model Context Protocol servers for Wikipedia and species data
 - `components/ai-elements/` - Pre-built conversation UI components
 - `components/roadrunner-loader.tsx` - Looney Tunes inspired loading animation
 
@@ -44,6 +48,7 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 ### Wildlife Data Integration
 - **iNaturalist API**: Research-grade wildlife observations with real-time data (api.inaturalist.org/v1)
 - **GBIF API**: Global biodiversity occurrence data with species validation (api.gbif.org/v1)
+- **IUCN Red List API**: Conservation status and threat assessment (api.iucnredlist.org/api/v4)
 - **OpenStreetMap**: Geocoding for location processing (nominatim.openstreetmap.org)
 - **Wikipedia API**: Species descriptions and images (wikipedia.org/api/rest_v1)
 - **Geographic Filtering**: Country-specific species results with multi-tier validation
@@ -70,9 +75,15 @@ This is a **Wildlife Organization Finder** built with Next.js 15 and AI-powered 
 ### Key Files
 - `app/api/chat/route.ts` - Main conversation logic with guardrails
 - `app/api/information/route.ts` - Wildlife information retrieval with RAG database
-- `lib/conservation-tools.ts` - Wildlife APIs and organization search
+- `app/api/iucn/species-status/route.ts` - IUCN Red List status lookup
+- `app/api/mcp-demo/route.ts` - MCP server testing and demonstration
+- `lib/conservation-tools.ts` - Wildlife APIs, Wikipedia tools, and organization search
 - `lib/agent-prompts.ts` - Agent system prompts (including information agent)
 - `lib/wildlife-rag-service.ts` - Vectorize RAG service for wildlife data
+- `lib/mcp-client.ts` - MCP client for Wikipedia and Species Fetcher servers
+- `mcp-servers/wikipedia/index.ts` - Wikipedia MCP server implementation
+- `mcp-servers/species-fetcher/index.ts` - Species Fetcher MCP server implementation
+- `scripts/test-mcp-servers.ts` - MCP server testing suite
 - `app/page.tsx` - Chat interface with 3-agent flow and delayed information
 - `components/roadrunner-loader.tsx` - Looney Tunes loading animation
 
@@ -82,6 +93,7 @@ Create `.env.local` with:
 ```
 OPENAI_API_KEY=your_openai_api_key_here
 VECTORIZE_TOKEN=your_vectorize_token_here
+IUCN_API_KEY=your_iucn_api_key_here  # Optional: For IUCN Red List data
 ```
 
 ## Application Flow
@@ -131,6 +143,53 @@ At app launch, users see three clearly structured options:
 4. **Organization Search**: AI-powered search for relevant conservation groups
 5. **Results Display**: Structured organization information with links
 6. **Wildlife Information**: Third agent automatically retrieves detailed information 5 seconds after organizations
+
+## MCP Servers (Model Context Protocol)
+
+### Overview
+Two MCP servers provide standardized tool interfaces for AI agents:
+
+### Wikipedia MCP Server (`mcp-servers/wikipedia/`)
+**Tools:**
+- `search_wikipedia(query, limit)` - Search Wikipedia articles
+- `get_wikipedia_summary(title)` - Get article summary with images
+- `get_wikipedia_article(title)` - Get full article HTML
+- `extract_wikipedia_key_facts(title, openaiApiKey)` - AI-powered fact extraction
+
+### Species Fetcher MCP Server (`mcp-servers/species-fetcher/`)
+**Tools:**
+- `geocode_location(locationQuery)` - Convert location to coordinates (OpenStreetMap)
+- `find_species_by_location(location)` - Find species (iNaturalist + GBIF)
+- `get_species_info(species)` - Get species details (Wikipedia)
+- `get_iucn_status(scientificName, iucnApiKey)` - Get IUCN Red List status
+- `search_conservation_organizations(animalName, locationName, openaiApiKey)` - AI-powered org search
+
+### Usage
+```typescript
+import { wikipediaMCP, speciesFetcherMCP } from '@/lib/mcp-client';
+
+// Wikipedia tools
+const summary = await wikipediaMCP.getSummary('Florida Panther');
+const facts = await wikipediaMCP.extractKeyFacts('Florida Panther', process.env.OPENAI_API_KEY);
+
+// Species Fetcher tools
+const location = await speciesFetcherMCP.geocodeLocation('Miami, Florida');
+const species = await speciesFetcherMCP.findSpeciesByLocation(location);
+const status = await speciesFetcherMCP.getIUCNStatus('Puma concolor coryi', process.env.IUCN_API_KEY);
+const orgs = await speciesFetcherMCP.searchConservationOrganizations(
+  'Florida Panther',
+  'Florida',
+  process.env.OPENAI_API_KEY
+);
+```
+
+### Testing
+Run MCP server tests:
+```bash
+npx tsx scripts/test-mcp-servers.ts
+```
+
+**Note:** MCP servers are optional development tools. Production uses direct API calls from `lib/conservation-tools.ts`.
 
 ## Development Notes
 
