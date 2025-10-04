@@ -1,15 +1,22 @@
 /**
  * MCP Client for Wildlife-Finder
  *
- * Connects to Wikipedia and Species Fetcher MCP servers
- * and provides tools for AI agents to use.
+ * Supports both stdio (development) and HTTP (production) transports
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { spawn } from 'child_process';
 
-// MCP Server configurations
+// Environment detection
+const IS_PRODUCTION = process.env.VERCEL || process.env.NODE_ENV === 'production';
+const MCP_SERVER_URL = process.env.MCP_SERVER_URL || 'http://localhost:3100';
+
+console.log(`🌍 MCP Mode: ${IS_PRODUCTION ? 'HTTP (Production)' : 'stdio (Development)'}`);
+if (IS_PRODUCTION) {
+  console.log(`📡 MCP Server URL: ${MCP_SERVER_URL}`);
+}
+
+// MCP Server configurations for stdio (development)
 interface MCPServerConfig {
   command: string;
   args: string[];
@@ -26,15 +33,48 @@ const MCP_SERVERS: Record<string, MCPServerConfig> = {
   },
 };
 
-// MCP Client manager
+// MCP Client manager with dual transport support
 class MCPClientManager {
   private clients: Map<string, Client> = new Map();
   private transports: Map<string, StdioClientTransport> = new Map();
 
   /**
-   * Connect to an MCP server
+   * Call a tool via HTTP (production mode)
    */
-  async connect(serverName: keyof typeof MCP_SERVERS): Promise<Client> {
+  private async callToolHTTP(
+    serverName: string,
+    toolName: string,
+    args: Record<string, any>
+  ): Promise<any> {
+    console.log(`📞 HTTP MCP Call: ${serverName}.${toolName}`);
+
+    const response = await fetch(`${MCP_SERVER_URL}/mcp/${serverName}/${toolName}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(args),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(`MCP HTTP Error: ${error.error || response.statusText}`);
+    }
+
+    const result = await response.json();
+
+    if (!result.success) {
+      throw new Error(`MCP Call Failed: ${result.error}`);
+    }
+
+    console.log(`✅ HTTP MCP Success: ${serverName}.${toolName}`);
+    return result.data;
+  }
+
+  /**
+   * Connect to an MCP server via stdio (development mode)
+   */
+  private async connect(serverName: keyof typeof MCP_SERVERS): Promise<Client> {
     // Return existing client if already connected
     if (this.clients.has(serverName)) {
       return this.clients.get(serverName)!;
@@ -45,7 +85,7 @@ class MCPClientManager {
       throw new Error(`Unknown MCP server: ${serverName}`);
     }
 
-    console.log(`🔌 Connecting to ${serverName} MCP server...`);
+    console.log(`🔌 Connecting to ${serverName} MCP server (stdio)...`);
 
     // Create transport
     const transport = new StdioClientTransport({
@@ -66,7 +106,7 @@ class MCPClientManager {
 
     // Connect
     await client.connect(transport);
-    console.log(`✅ Connected to ${serverName} MCP server`);
+    console.log(`✅ Connected to ${serverName} MCP server (stdio)`);
 
     // Store client and transport
     this.clients.set(serverName, client);
@@ -76,47 +116,16 @@ class MCPClientManager {
   }
 
   /**
-   * Disconnect from an MCP server
+   * Call a tool via stdio (development mode)
    */
-  async disconnect(serverName: string): Promise<void> {
-    const client = this.clients.get(serverName);
-    if (!client) return;
-
-    await client.close();
-    this.clients.delete(serverName);
-    this.transports.delete(serverName);
-
-    console.log(`🔌 Disconnected from ${serverName} MCP server`);
-  }
-
-  /**
-   * Disconnect from all MCP servers
-   */
-  async disconnectAll(): Promise<void> {
-    const serverNames = Array.from(this.clients.keys());
-    await Promise.all(serverNames.map((name) => this.disconnect(name)));
-  }
-
-  /**
-   * List available tools from a server
-   */
-  async listTools(serverName: keyof typeof MCP_SERVERS): Promise<any[]> {
-    const client = await this.connect(serverName);
-    const response = await client.listTools();
-    return response.tools || [];
-  }
-
-  /**
-   * Call a tool on an MCP server
-   */
-  async callTool(
+  private async callToolStdio(
     serverName: keyof typeof MCP_SERVERS,
     toolName: string,
     args: Record<string, any>
   ): Promise<any> {
     const client = await this.connect(serverName);
 
-    console.log(`🔧 Calling ${serverName}.${toolName} with args:`, args);
+    console.log(`🔧 Calling ${serverName}.${toolName} (stdio) with args:`, args);
 
     const response = await client.callTool({
       name: toolName,
@@ -141,6 +150,62 @@ class MCPClientManager {
     }
 
     return content;
+  }
+
+  /**
+   * Call a tool (auto-detects transport based on environment)
+   */
+  async callTool(
+    serverName: keyof typeof MCP_SERVERS,
+    toolName: string,
+    args: Record<string, any>
+  ): Promise<any> {
+    if (IS_PRODUCTION) {
+      return this.callToolHTTP(serverName, toolName, args);
+    } else {
+      return this.callToolStdio(serverName, toolName, args);
+    }
+  }
+
+  /**
+   * Disconnect from an MCP server (stdio only)
+   */
+  async disconnect(serverName: string): Promise<void> {
+    if (IS_PRODUCTION) return; // No connections to close in HTTP mode
+
+    const client = this.clients.get(serverName);
+    if (!client) return;
+
+    await client.close();
+    this.clients.delete(serverName);
+    this.transports.delete(serverName);
+
+    console.log(`🔌 Disconnected from ${serverName} MCP server`);
+  }
+
+  /**
+   * Disconnect from all MCP servers (stdio only)
+   */
+  async disconnectAll(): Promise<void> {
+    if (IS_PRODUCTION) return;
+
+    const serverNames = Array.from(this.clients.keys());
+    await Promise.all(serverNames.map((name) => this.disconnect(name)));
+  }
+
+  /**
+   * List available tools from a server
+   */
+  async listTools(serverName: keyof typeof MCP_SERVERS): Promise<any[]> {
+    if (IS_PRODUCTION) {
+      const response = await fetch(`${MCP_SERVER_URL}/mcp/${serverName}/tools`);
+      const result = await response.json();
+      return result.tools || [];
+    } else {
+      const client = await this.connect(serverName);
+      const response = await client.listTools();
+      return response.tools || [];
+    }
   }
 }
 
