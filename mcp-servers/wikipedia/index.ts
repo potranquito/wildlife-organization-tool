@@ -138,7 +138,7 @@ async function extractWikipediaKeyFacts(title: string, openaiApiKey?: string) {
 
   // Parse the facts
   const facts: Array<{ category: string; fact: string }> = [];
-  const lines = resultText.split('\n').filter((line) => line.trim());
+  const lines = resultText.split('\n').filter((line: string) => line.trim());
 
   for (const line of lines) {
     const match = line.match(/^([^:]+):\s*(.+)$/);

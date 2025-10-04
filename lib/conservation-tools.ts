@@ -21,9 +21,6 @@ export interface Species {
 export interface Organization {
   name: string;
   website?: string;
-  description: string;
-  location: string;
-  contactInfo?: string;
 }
 
 export async function geocodeLocation(locationQuery: string): Promise<Location | null> {
@@ -841,31 +838,18 @@ export async function findConservationOrganizations(
   species: Species,
   location: Location
 ): Promise<Organization[]> {
-  let organizations: Organization[] = [];
-
   try {
     console.log(`Finding conservation organizations for ${species.commonName} in ${location.displayName}`);
 
-    // Use OpenAI WebSearch tool to find real organizations
+    // Use OpenAI WebSearch tool to find real organizations (no hardcoded orgs)
     const webSearchOrgs = await searchConservationOrganizations(species, location);
-    organizations = [...organizations, ...webSearchOrgs];
 
-    // Add government agencies as backup/supplement
-    const governmentOrgs = await getGovernmentConservationOrgs(location);
-    const existingNames = new Set(organizations.map(org => org.name.toLowerCase()));
-    const newGovOrgs = governmentOrgs.filter(org =>
-      !existingNames.has(org.name.toLowerCase())
-    );
-
-    organizations = [...organizations, ...newGovOrgs];
-
-    console.log(`Found ${organizations.length} organizations for ${species.commonName}`);
-    return organizations.slice(0, 6); // Return top 6 organizations
+    console.log(`Found ${webSearchOrgs.length} organizations for ${species.commonName} via WebSearch`);
+    return webSearchOrgs.slice(0, 6); // Return top 6 organizations
 
   } catch (error) {
     console.error('Organization search error:', error);
-    // Return at least government agencies as fallback
-    return (await getGovernmentConservationOrgs(location)).slice(0, 3);
+    return [];
   }
 }
 
@@ -1044,20 +1028,14 @@ function parseWebSearchResults(searchResults: string, species: Species, location
         if (currentOrg.name) {
           organizations.push({
             name: currentOrg.name,
-            website: currentOrg.website || '',
-            description: currentOrg.description || 'Conservation organization',
-            location: currentOrg.location || location.city || location.state || 'Local',
-            contactInfo: currentOrg.contactInfo || ''
+            website: currentOrg.website || ''
           });
         }
 
         // Start new org
         currentOrg = {
           name: orgNameMatch[1].trim(),
-          website: '',
-          description: '',
-          location: '',
-          contactInfo: ''
+          website: ''
         };
         continue;
       }
@@ -1069,26 +1047,13 @@ function parseWebSearchResults(searchResults: string, species: Species, location
         continue;
       }
 
-      // Look for descriptions (lines with relevant keywords)
-      if (currentOrg.name && !currentOrg.description &&
-          (trimmedLine.includes('wildlife') || trimmedLine.includes('conservation') ||
-           trimmedLine.includes('rescue') || trimmedLine.includes('rehabilitation') ||
-           trimmedLine.includes(species.commonName.toLowerCase()) ||
-           trimmedLine.includes('protect') || trimmedLine.includes('habitat')) &&
-          trimmedLine.length > 20) {
-        currentOrg.description = trimmedLine.slice(0, 150); // Limit description length
-        continue;
-      }
     }
 
     // Don't forget the last organization
     if (currentOrg.name) {
       organizations.push({
         name: currentOrg.name,
-        website: currentOrg.website || '',
-        description: currentOrg.description || 'Conservation organization',
-        location: currentOrg.location || location.city || location.state || 'Local',
-        contactInfo: currentOrg.contactInfo || ''
+        website: currentOrg.website || ''
       });
     }
 
@@ -1153,20 +1118,14 @@ function extractOrganizationsFromText(text: string, location: Location): Organiz
       if (currentOrg.name) {
         organizations.push({
           name: currentOrg.name,
-          website: currentOrg.website || '',
-          description: currentOrg.description || 'Conservation organization',
-          location: currentOrg.location || location.city || location.state || 'Local',
-          contactInfo: currentOrg.contactInfo || ''
+          website: currentOrg.website || ''
         });
       }
 
       // Start new org
       currentOrg = {
         name: numberMatch[2].trim(),
-        website: '',
-        description: '',
-        location: '',
-        contactInfo: ''
+        website: ''
       };
       continue;
     }
@@ -1195,20 +1154,6 @@ function extractOrganizationsFromText(text: string, location: Location): Organiz
       continue;
     }
 
-    // Check for description line
-    const descMatch = trimmedLine.match(/^Description:\s*(.+)$/i);
-    if (descMatch && currentOrg.name) {
-      currentOrg.description = descMatch[1].trim();
-      continue;
-    }
-
-    // Check for location line
-    const locMatch = trimmedLine.match(/^Location:\s*(.+)$/i);
-    if (locMatch && currentOrg.name) {
-      currentOrg.location = locMatch[1].trim();
-      continue;
-    }
-
     // If we have an org name and this line contains a URL, treat it as website
     if (currentOrg.name && !currentOrg.website && trimmedLine.match(/https?:\/\/[^\s]+/)) {
       const urlMatch = trimmedLine.match(/(https?:\/\/[^\s]+)/);
@@ -1217,24 +1162,13 @@ function extractOrganizationsFromText(text: string, location: Location): Organiz
       }
       continue;
     }
-
-    // If we have an org name but no description yet, and this line doesn't look like a field, treat as description
-    if (currentOrg.name && !currentOrg.description &&
-        !trimmedLine.match(/^(Website|Description|Location):/i) &&
-        trimmedLine.length > 10) {
-      currentOrg.description = trimmedLine;
-      continue;
-    }
   }
 
   // Don't forget the last organization
   if (currentOrg.name) {
     organizations.push({
       name: currentOrg.name,
-      website: currentOrg.website || '',
-      description: currentOrg.description || 'Conservation organization',
-      location: currentOrg.location || location.city || location.state || 'Local',
-      contactInfo: currentOrg.contactInfo || ''
+      website: currentOrg.website || ''
     });
   }
 
@@ -1256,187 +1190,9 @@ function cleanDescription(description: string): string {
   return firstSentence.length < 100 ? firstSentence : description.slice(0, 100) + '...';
 }
 
-function getSpeciesSpecificOrganizations(species: Species, location: Location): Organization[] {
-  const orgs: Organization[] = [];
-  const commonName = species.commonName.toLowerCase();
-  const state = location.state?.toLowerCase() || '';
-  const country = location.country?.toLowerCase() || '';
+// Removed hardcoded organizations - now using WebSearch only
 
-  // Bird-specific organizations
-  if (commonName.includes('bird') || commonName.includes('eagle') || commonName.includes('hawk') ||
-      commonName.includes('owl') || commonName.includes('falcon') || commonName.includes('duck') ||
-      commonName.includes('goose') || commonName.includes('crane') || commonName.includes('heron') ||
-      commonName.includes('woodpecker') || commonName.includes('warbler') || commonName.includes('sparrow')) {
-
-    orgs.push({
-      name: 'National Audubon Society',
-      website: 'https://www.audubon.org',
-      description: 'Protecting birds and their habitats across the Americas',
-      location: 'National',
-      contactInfo: ''
-    });
-
-    if (country.includes('united states') || country.includes('usa')) {
-      orgs.push({
-        name: 'American Bird Conservancy',
-        website: 'https://abcbirds.org',
-        description: 'Conserving wild birds and their habitats throughout the Americas',
-        location: 'United States',
-        contactInfo: ''
-      });
-    }
-  }
-
-  // Marine species organizations
-  if (commonName.includes('whale') || commonName.includes('dolphin') || commonName.includes('seal') ||
-      commonName.includes('sea turtle') || commonName.includes('manatee') || commonName.includes('otter')) {
-
-    orgs.push({
-      name: 'Marine Mammal Center',
-      website: 'https://www.marinemammalcenter.org',
-      description: 'Rescuing and rehabilitating marine mammals',
-      location: 'California',
-      contactInfo: ''
-    });
-
-    orgs.push({
-      name: 'Sea Turtle Conservancy',
-      website: 'https://conserveturtles.org',
-      description: 'Protecting sea turtles through research and conservation',
-      location: 'Florida',
-      contactInfo: ''
-    });
-  }
-
-  // Bear and large mammal organizations
-  if (commonName.includes('bear') || commonName.includes('wolf') || commonName.includes('mountain lion') ||
-      commonName.includes('cougar') || commonName.includes('elk') || commonName.includes('moose')) {
-
-    orgs.push({
-      name: 'Defenders of Wildlife',
-      website: 'https://defenders.org',
-      description: 'Protecting and restoring imperiled species and their habitats',
-      location: 'National',
-      contactInfo: ''
-    });
-
-    if (state.includes('alaska') || state.includes('montana') || state.includes('wyoming') ||
-        state.includes('idaho') || state.includes('washington')) {
-      orgs.push({
-        name: 'Greater Yellowstone Coalition',
-        website: 'https://greateryellowstone.org',
-        description: 'Protecting the Greater Yellowstone Ecosystem',
-        location: 'Montana/Wyoming/Idaho',
-        contactInfo: ''
-      });
-    }
-  }
-
-  // Amphibian and reptile organizations
-  if (commonName.includes('frog') || commonName.includes('toad') || commonName.includes('salamander') ||
-      commonName.includes('snake') || commonName.includes('lizard') || commonName.includes('turtle')) {
-
-    orgs.push({
-      name: 'Amphibian Survival Alliance',
-      website: 'https://amphibians.org',
-      description: 'Global coalition working to protect amphibians',
-      location: 'International',
-      contactInfo: ''
-    });
-  }
-
-  // Endangered species organizations
-  if (species.conservationStatus &&
-      ['Critically Endangered', 'Endangered', 'Vulnerable'].includes(species.conservationStatus)) {
-
-    orgs.push({
-      name: 'Endangered Species Coalition',
-      website: 'https://www.endangered.org',
-      description: 'Working to protect endangered species and their habitats',
-      location: 'National',
-      contactInfo: ''
-    });
-  }
-
-  return orgs;
-}
-
-function getGeneralConservationOrgs(location: Location): Organization[] {
-  const orgs: Organization[] = [];
-  const state = location.state?.toLowerCase() || '';
-  const country = location.country?.toLowerCase() || '';
-
-  // Major national conservation organizations
-  if (country.includes('united states') || country.includes('usa')) {
-    orgs.push(
-      {
-        name: 'National Wildlife Federation',
-        website: 'https://www.nwf.org',
-        description: 'Protecting wildlife for our children\'s future',
-        location: 'National',
-        contactInfo: ''
-      },
-      {
-        name: 'The Nature Conservancy',
-        website: 'https://www.nature.org',
-        description: 'Protecting lands and waters on which all life depends',
-        location: 'National',
-        contactInfo: ''
-      },
-      {
-        name: 'World Wildlife Fund',
-        website: 'https://www.worldwildlife.org',
-        description: 'Conserving wildlife and wild places worldwide',
-        location: 'International',
-        contactInfo: ''
-      }
-    );
-
-    // Regional organizations
-    if (state.includes('california') || state.includes('oregon') || state.includes('washington')) {
-      orgs.push({
-        name: 'Pacific Wildlife Foundation',
-        website: 'https://www.pacificwildlife.org',
-        description: 'Protecting Pacific Coast wildlife and habitats',
-        location: 'Pacific Coast',
-        contactInfo: ''
-      });
-    }
-
-    if (state.includes('florida') || state.includes('georgia') || state.includes('alabama') ||
-        state.includes('mississippi') || state.includes('louisiana')) {
-      orgs.push({
-        name: 'Southeast Conservation Adaptation Strategy',
-        website: 'https://secassoutheast.org',
-        description: 'Collaborative conservation across the Southeast',
-        location: 'Southeastern US',
-        contactInfo: ''
-      });
-    }
-  }
-
-  // International organizations for non-US locations
-  if (!country.includes('united states') && !country.includes('usa')) {
-    orgs.push(
-      {
-        name: 'World Wildlife Fund',
-        website: 'https://www.worldwildlife.org',
-        description: 'Conserving wildlife and wild places worldwide',
-        location: 'International',
-        contactInfo: ''
-      },
-      {
-        name: 'International Union for Conservation of Nature',
-        website: 'https://www.iucn.org',
-        description: 'Global authority on nature conservation',
-        location: 'International',
-        contactInfo: ''
-      }
-    );
-  }
-
-  return orgs;
-}
+// Removed hardcoded general organizations - using WebSearch only
 
 async function getGovernmentConservationOrgs(location: Location): Promise<Organization[]> {
   try {
@@ -1513,24 +1269,15 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
     return [
       {
         name: 'National Parks Board (NParks)',
-        website: 'https://www.nparks.gov.sg',
-        description: 'Singapore\'s national authority for managing parks, nature reserves, and wildlife conservation',
-        location: 'Singapore',
-        contactInfo: ''
+        website: 'https://www.nparks.gov.sg'
       },
       {
         name: 'Wildlife Reserves Singapore',
-        website: 'https://www.wrs.com.sg',
-        description: 'Leading wildlife conservation organization operating Singapore Zoo, Night Safari, River Wonders, and Bird Paradise',
-        location: 'Singapore',
-        contactInfo: ''
+        website: 'https://www.wrs.com.sg'
       },
       {
         name: 'Nature Society (Singapore)',
-        website: 'https://www.nss.org.sg',
-        description: 'Singapore\'s premier nature conservation NGO working to protect biodiversity',
-        location: 'Singapore',
-        contactInfo: ''
+        website: 'https://www.nss.org.sg'
       }
     ];
   }
@@ -1541,24 +1288,15 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
     return [
       {
         name: `${stateName} Department of Fish and Wildlife`,
-        website: '#',
-        description: `State agency managing wildlife conservation in ${stateName}`,
-        location: stateName,
-        contactInfo: ''
+        website: '#'
       },
       {
         name: 'U.S. Fish and Wildlife Service',
-        website: 'https://www.fws.gov',
-        description: 'Federal agency managing wildlife conservation and endangered species',
-        location: 'United States',
-        contactInfo: ''
+        website: 'https://www.fws.gov'
       },
       {
         name: 'National Wildlife Federation',
-        website: 'https://www.nwf.org',
-        description: 'America\'s largest wildlife conservation organization',
-        location: 'United States',
-        contactInfo: ''
+        website: 'https://www.nwf.org'
       }
     ];
   }
@@ -1568,17 +1306,11 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
     return [
       {
         name: 'Environment and Climate Change Canada',
-        website: 'https://www.canada.ca/en/environment-climate-change.html',
-        description: 'Federal department managing wildlife and environmental protection',
-        location: 'Canada',
-        contactInfo: ''
+        website: 'https://www.canada.ca/en/environment-climate-change.html'
       },
       {
         name: 'Canadian Wildlife Federation',
-        website: 'https://cwf-fcf.org',
-        description: 'National conservation organization protecting Canadian wildlife',
-        location: 'Canada',
-        contactInfo: ''
+        website: 'https://cwf-fcf.org'
       }
     ];
   }
@@ -1588,17 +1320,11 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
     return [
       {
         name: 'Natural England',
-        website: 'https://www.gov.uk/government/organisations/natural-england',
-        description: 'Government agency protecting nature and wildlife in England',
-        location: 'United Kingdom',
-        contactInfo: ''
+        website: 'https://www.gov.uk/government/organisations/natural-england'
       },
       {
         name: 'The Wildlife Trusts',
-        website: 'https://www.wildlifetrusts.org',
-        description: 'UK\'s leading conservation charity protecting wildlife',
-        location: 'United Kingdom',
-        contactInfo: ''
+        website: 'https://www.wildlifetrusts.org'
       }
     ];
   }
@@ -1608,17 +1334,11 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
     return [
       {
         name: 'Department of Climate Change, Energy, the Environment and Water',
-        website: 'https://www.dcceew.gov.au',
-        description: 'Australian government department managing environmental protection',
-        location: 'Australia',
-        contactInfo: ''
+        website: 'https://www.dcceew.gov.au'
       },
       {
         name: 'Australian Wildlife Conservancy',
-        website: 'https://www.australianwildlife.org',
-        description: 'Largest private owner of conservation land in Australia',
-        location: 'Australia',
-        contactInfo: ''
+        website: 'https://www.australianwildlife.org'
       }
     ];
   }
@@ -1627,10 +1347,7 @@ function getHardcodedGovernmentAgencies(location: Location): Organization[] {
   return [
     {
       name: 'Local Wildlife Conservation Authority',
-      website: '#',
-      description: 'Contact your local wildlife management agency or environmental department',
-      location: location.city || location.country || 'Local area',
-      contactInfo: 'Search online for "[your location] wildlife department"'
+      website: '#'
     }
   ];
 }

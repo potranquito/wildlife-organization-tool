@@ -74,12 +74,13 @@ export async function POST(request: NextRequest) {
       const fakeLocation: Location = {
         displayName: random.location,
         country: random.location,
-        latitude: 0,
-        longitude: 0
+        lat: 0,
+        lon: 0
       };
 
       // Create species object
       const randomSpecies: Species = {
+        id: `random-${random.name}`,
         commonName: random.name,
         scientificName: random.scientificName,
         conservationStatus: 'Endangered'
@@ -98,7 +99,7 @@ export async function POST(request: NextRequest) {
       response += `**Conservation Organizations:**\n\n`;
 
       if (organizations.length > 0) {
-        organizations.forEach((org) => {
+        organizations.forEach((org: any) => {
           response += `• **${org.name}**\n`;
           if (org.website && org.website !== '#') {
             response += `  ${org.website}\n`;
@@ -249,7 +250,7 @@ export async function POST(request: NextRequest) {
           }
 
           // Display species list
-          const hasEndangeredSpecies = species.some(s => s.conservationStatus &&
+          const hasEndangeredSpecies = species.some((s: any) => s.conservationStatus &&
             ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus));
 
           const locationDisplayName = result.location.city || result.location.state || result.location.country || 'this location';
@@ -257,7 +258,7 @@ export async function POST(request: NextRequest) {
             ? `**Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
             : `**Wildlife near ${locationDisplayName}:**\n\n`;
 
-          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
+          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal: any) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
               : '';
@@ -308,35 +309,32 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
       console.log(`🤖 CLASSIFICATION RESULT: ${classification}`);
 
       if (classification === 'ANIMAL') {
-        // Animal-first mode: Search for where this animal lives
+        // Animal-first mode: Search for where this animal lives using MCP
         console.log(`🐾 ANIMAL-FIRST MODE: Searching for "${message}"`);
 
         session.mode = 'animal-first';
         session.step = 'animal-location';
         sessions.set(sessionId, session);
 
-        // Search for both animal information AND organizations in parallel
+        // Use OpenAI web search to get basic animal info and location
         const { OpenAI } = await import('openai');
         const openaiClient = new OpenAI({
           apiKey: process.env.OPENAI_API_KEY
         });
 
-        console.log(`🔄 PARALLEL SEARCH: Finding information + organizations + locations for "${message}"`);
+        console.log(`🔍 WEB SEARCH: Finding basic information for "${message}"`);
 
-        // Run both searches in parallel
-        const [animalSearchResult, organizationPreSearchResult] = await Promise.all([
-          // Search 1: Animal information + habitat locations
-          openaiClient.chat.completions.create({
-            model: 'gpt-4o-search-preview',
-            web_search_options: {},
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a wildlife expert. Search the web for current, accurate information about animal species and their habitats.'
-              },
-              {
-                role: 'user',
-                content: `Search for information about "${message}" (animal species).
+        const animalSearchResult = await openaiClient.chat.completions.create({
+          model: 'gpt-4o-search-preview',
+          web_search_options: {},
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a wildlife expert. Search the web for current, accurate information about animal species and their habitats.'
+            },
+            {
+              role: 'user',
+              content: `Search for information about "${message}" (animal species).
 
 Find:
 1. Scientific name if available
@@ -352,38 +350,12 @@ Found in: [list of countries/regions/states where it's commonly found - be speci
 Population: [brief note on numbers/trend]
 
 If this is not a valid animal species, respond with: NOT_AN_ANIMAL`
-              }
-            ]
-          }),
-          // Search 2: Pre-search for conservation organizations (worldwide)
-          openaiClient.chat.completions.create({
-            model: 'gpt-4o-search-preview',
-            web_search_options: {},
-            messages: [
-              {
-                role: 'system',
-                content: 'You are a conservation organization expert. Search the web for current conservation organizations.'
-              },
-              {
-                role: 'user',
-                content: `Find 3-5 major conservation organizations that work with "${message}".
-
-List format:
-- Organization Name
-  Website: [URL]
-  Focus: [brief description]
-
-Include international, national, and regional groups.`
-              }
-            ]
-          })
-        ]);
+            }
+          ]
+        });
 
         const animalInfo = animalSearchResult.choices[0]?.message?.content || '';
-        const preliminaryOrgs = organizationPreSearchResult.choices[0]?.message?.content || '';
-
         console.log(`🔍 ANIMAL SEARCH RESULT:`, animalInfo);
-        console.log(`🏢 PRELIMINARY ORGANIZATIONS FOUND:`, preliminaryOrgs.substring(0, 200) + '...');
 
         // Check if it's a valid animal
         if (animalInfo.includes('NOT_AN_ANIMAL')) {
@@ -396,6 +368,16 @@ Include international, national, and regional groups.`
           return NextResponse.json({ response });
         }
 
+        // Use MCP to search for conservation organizations (worldwide/global scope)
+        console.log(`🏢 MCP SEARCH: Finding organizations for "${message}"`);
+        const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+          message,
+          'Worldwide',
+          process.env.OPENAI_API_KEY || ''
+        );
+        console.log(`🔍 FOUND ${organizations.length} organizations via MCP for ${message}`);
+        console.log(`📋 MCP ORGS SAMPLE:`, JSON.stringify(organizations.slice(0, 2), null, 2));
+
         // Store animal information
         session.selectedAnimal = {
           id: message.toLowerCase().replace(/\s+/g, '-'),
@@ -405,8 +387,27 @@ Include international, national, and regional groups.`
         };
         sessions.set(sessionId, session);
 
-        // Show the user the animal info with preliminary organizations
-        let response = `🐾 **${message}**\n\n${animalInfo}\n\n---\n\n**🏢 Conservation Organizations (Preliminary Results):**\n\n${preliminaryOrgs}\n\n---\n\n**Want more specific results?**\n\n1. **Enter a specific location** to find organizations in that area (e.g., "California", "Arizona", "United States")\n2. **Type "worldwide"** to search for more global organizations\n3. **Select a specific subspecies** if multiple were listed above`;
+        // Format organizations response
+        let orgsResponse = '';
+        if (organizations.length > 0) {
+          organizations.forEach((org: any) => {
+            orgsResponse += `- **${org.name}**\n`;
+            if (org.website && org.website !== '#') {
+              orgsResponse += `  ${org.website}\n`;
+            }
+            orgsResponse += `\n`;
+          });
+        } else {
+          orgsResponse = `- Contact your local wildlife department\n- Search for international wildlife conservation organizations\n\nThese can help protect ${message}.`;
+        }
+
+        // Show the user the animal info with MCP-sourced organizations
+        // Use proper capitalization for the animal name
+        const capitalizedAnimal = message.split(' ').map((word: string) =>
+          word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        ).join(' ');
+
+        let response = `🐾 **${capitalizedAnimal}**\n\n${animalInfo}\n\n---\n\n**${capitalizedAnimal} Conservation Organizations:**\n\n${orgsResponse}\nContact these organizations to help protect ${message}.\n\n---\n\n**Want more specific results?**\n\n1. **Enter a specific location** to find organizations in that area (e.g., "California", "Arizona", "United States")\n2. **Type "worldwide"** to search for more global organizations\n3. **Select a specific subspecies** if multiple were listed above`;
 
         return NextResponse.json({ response });
       } else {
@@ -456,8 +457,8 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         const globalLocation: Location = {
           displayName: 'Worldwide',
           country: 'Global',
-          latitude: 0,
-          longitude: 0
+          lat: 0,
+          lon: 0
         };
 
         const organizations = await speciesFetcherMCP.searchConservationOrganizations(
@@ -468,7 +469,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
 
         let response = `**${message} Conservation Organizations:**\n\n`;
         if (organizations.length > 0) {
-          organizations.forEach((org) => {
+          organizations.forEach((org: any) => {
             response += `- **${org.name}**\n`;
             if (org.website && org.website !== '#') {
               response += `  ${org.website}\n`;
@@ -494,8 +495,8 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         const globalLocation: Location = {
           displayName: 'Worldwide',
           country: 'Global',
-          latitude: 0,
-          longitude: 0
+          lat: 0,
+          lon: 0
         };
 
         const organizations = await speciesFetcherMCP.searchConservationOrganizations(
@@ -506,7 +507,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
 
         let response = `**${session.selectedAnimal.commonName} Conservation Organizations (Worldwide):**\n\n`;
         if (organizations.length > 0) {
-          organizations.forEach((org) => {
+          organizations.forEach((org: any) => {
             response += `- **${org.name}**\n`;
             if (org.website && org.website !== '#') {
               response += `  ${org.website}\n`;
@@ -538,7 +539,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
 
         let response = `**${session.selectedAnimal.commonName} Conservation Organizations in ${geocodedLocation.city || geocodedLocation.state || geocodedLocation.country}:**\n\n`;
         if (organizations.length > 0) {
-          organizations.forEach((org) => {
+          organizations.forEach((org: any) => {
             response += `- **${org.name}**\n`;
             if (org.website && org.website !== '#') {
               response += `  ${org.website}\n`;
@@ -547,7 +548,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           });
           response += `Contact these organizations to help protect ${session.selectedAnimal.commonName}.`;
         } else {
-          response += `No specific organizations found in this area. Try contacting your local wildlife department or searching for "${session.selectedAnimal.commonName} conservation ${locationResult.location.country}".`;
+          response += `No specific organizations found in this area. Try contacting your local wildlife department or searching for "${session.selectedAnimal.commonName} conservation ${geocodedLocation.country}".`;
         }
 
         session.step = 'completed';
@@ -591,7 +592,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         }
 
         // Display species list
-        const hasEndangeredSpecies = species.some(s => s.conservationStatus &&
+        const hasEndangeredSpecies = species.some((s: any) => s.conservationStatus &&
           ['Critically Endangered', 'Endangered', 'Vulnerable', 'Near Threatened'].includes(s.conservationStatus));
 
         const locationDisplayName = locationResult.location.city || locationResult.location.state || locationResult.location.country || 'this location';
@@ -599,7 +600,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           ? `**🔴 Endangered & Threatened Species near ${locationDisplayName}:**\n\n`
           : `**🌿 Wildlife near ${locationDisplayName}:**\n\n`;
 
-        species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
+        species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal: any) => {
           const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
             ? ` (${animal.conservationStatus})`
             : '';
@@ -607,9 +608,9 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         });
 
         // Get first 3 animal names as examples
-        const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+        const exampleAnimals = species.slice(0, 3).map((s: any) => s.commonName).filter(Boolean);
         const exampleText = exampleAnimals.length > 0
-          ? `\n**Examples from your location:**\n${exampleAnimals.map(name => `"${name}"`).join(' or ')}`
+          ? `\n**Examples from your location:**\n${exampleAnimals.map((name: string) => `"${name}"`).join(' or ')}`
           : '';
 
         response += `\n\n⚠️ **IMPORTANT: You MUST select ONE animal from the list above.**\n\n📋 **Instructions:**\n1. Type the animal name EXACTLY as shown\n2. Do NOT include the conservation status (the part in parentheses)\n3. The system will then search for organizations protecting that species${exampleText}`;
@@ -648,7 +649,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
 
       if (isNonAnimalInput) {
         let response = `🐾 **Please select an animal from the list!**\n\nChoose one of these animals found near ${session.location.city || session.location.state || session.location.country}:\n\n`;
-        species.slice(0, 8).forEach((animal) => {
+        species.slice(0, 8).forEach((animal: any) => {
           const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
             ? ` (${animal.conservationStatus})`
             : '';
@@ -656,7 +657,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         });
 
         // Get first 3 animal names as examples
-        const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+        const exampleAnimals = species.slice(0, 3).map((s: any) => s.commonName).filter(Boolean);
         const exampleText = exampleAnimals.length > 0
           ? `\n**Try one of these:**\n${exampleAnimals.map(name => `"${name}"`).join(' or ')}`
           : '';
@@ -731,6 +732,52 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         }
       }
 
+      // If STILL no match, try fuzzy word-based matching (handles typos and word order)
+      if (!selectedAnimal) {
+        const userWords = trimmedLowerMessage.split(/\s+/).filter((w: string) => w.length > 2); // Words with 3+ chars
+
+        for (const s of species) {
+          if (!s.commonName) continue;
+
+          const animalWords = s.commonName.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+
+          // Count how many user words match animal words (allowing slight variations)
+          let matchCount = 0;
+          for (const userWord of userWords) {
+            for (const animalWord of animalWords) {
+              // Exact word match
+              if (userWord === animalWord) {
+                matchCount++;
+                break;
+              }
+              // Fuzzy match: one word contains the other (at least 4 chars)
+              if (userWord.length >= 4 && animalWord.length >= 4) {
+                if (userWord.includes(animalWord) || animalWord.includes(userWord)) {
+                  matchCount++;
+                  break;
+                }
+              }
+              // Similar start (first 4+ characters match)
+              if (userWord.length >= 4 && animalWord.length >= 4) {
+                if (userWord.substring(0, 4) === animalWord.substring(0, 4)) {
+                  matchCount++;
+                  break;
+                }
+              }
+            }
+          }
+
+          // If 70%+ of words match, consider it a match
+          const matchRatio = matchCount / Math.max(userWords.length, animalWords.length);
+          if (matchRatio >= 0.7 && matchCount >= 2) {
+            selectedAnimal = s.commonName;
+            matchedSpecies = s;
+            console.log(`🔍 FUZZY MATCH: "${message}" matched "${s.commonName}" (${matchCount}/${Math.max(userWords.length, animalWords.length)} words, ${Math.round(matchRatio * 100)}%)`);
+            break;
+          }
+        }
+      }
+
       if (selectedAnimal && matchedSpecies) {
         console.log(`🏢 SEARCHING ORGANIZATIONS for ${selectedAnimal} in ${session.location?.displayName}`);
         const organizations = await speciesFetcherMCP.searchConservationOrganizations(
@@ -743,7 +790,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         let response = `**${selectedAnimal} Conservation Organizations:**\n\n`;
 
         if (organizations.length > 0) {
-          organizations.forEach((org) => {
+          organizations.forEach((org: any) => {
             response += `- **${org.name}**\n`;
             if (org.website && org.website !== '#') {
               response += `  ${org.website}\n`;
@@ -766,7 +813,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           let response = `❌ **"${message}" was not found in your location's wildlife list.**\n\n`;
           response += `⚠️ **Remember: You can ONLY select animals from the list below** (found near ${session.location.city || session.location.state || session.location.country}):\n\n`;
 
-          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal) => {
+          species.slice(0, CONFIG.ui.maxDisplayedSpecies).forEach((animal: any) => {
             const status = animal.conservationStatus && animal.conservationStatus !== 'Unknown'
               ? ` (${animal.conservationStatus})`
               : '';
@@ -774,7 +821,7 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           });
 
           // Add helpful examples
-          const exampleAnimals = species.slice(0, 3).map(s => s.commonName).filter(Boolean);
+          const exampleAnimals = species.slice(0, 3).map((s: any) => s.commonName).filter(Boolean);
           if (exampleAnimals.length > 0) {
             response += `\n\n💡 **Try copying one of these exactly:**\n${exampleAnimals.map(name => `"${name}"`).join(', ')}`;
           }

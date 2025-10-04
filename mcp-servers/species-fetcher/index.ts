@@ -125,13 +125,18 @@ async function findSpeciesByLocation(location: Location): Promise<Species[]> {
 
     const allSpecies: Species[] = [];
 
-    // Search iNaturalist
+    // Determine search radius based on location type
+    // Country/state searches use larger radius, city searches use smaller radius
+    const isCountryOrState = !location.city;
+    const radius = isCountryOrState ? 500 : 50; // 500km for countries, 50km for cities
+
+    // Search iNaturalist (removed threatened filter to show ALL species)
     const iNatUrl = `https://api.inaturalist.org/v1/observations/species_counts?` +
       `lat=${location.lat}&` +
       `lng=${location.lon}&` +
-      `radius=50&` +
+      `radius=${radius}&` +
       `quality_grade=research&` +
-      `per_page=20&` +
+      `per_page=40&` +
       `order=desc&` +
       `order_by=count`;
 
@@ -162,13 +167,14 @@ async function findSpeciesByLocation(location: Location): Promise<Species[]> {
     }
 
     // Search GBIF (if needed for more species)
-    if (allSpecies.length < 15) {
+    if (allSpecies.length < 30) {
+      const gbifRadius = radius * 1000; // Convert km to meters for GBIF
       const gbifUrl = `https://api.gbif.org/v1/occurrence/search?` +
         `decimalLatitude=${location.lat}&` +
         `decimalLongitude=${location.lon}&` +
-        `radius=50000&` +
+        `radius=${gbifRadius}&` +
         `hasCoordinate=true&` +
-        `limit=10`;
+        `limit=20`;
 
       const gbifResponse = await fetch(gbifUrl);
       const gbifData = await gbifResponse.json();
@@ -345,20 +351,36 @@ async function searchConservationOrganizations(
         messages: [
           {
             role: 'system',
-            content: 'You are a conservation organization researcher. Search the web for current, legitimate conservation organizations.',
+            content: 'You are a wildlife conservation expert. Search the web for SPECIFIC conservation organizations that work DIRECTLY with the species mentioned. Be taxonomically accurate - only suggest organizations that actually work with that specific species or closely related taxa.',
           },
           {
             role: 'user',
-            content: `Find 3-5 real conservation organizations working to protect ${animalName} in ${locationName}.
+            content: `Find 3-5 real conservation organizations that SPECIFICALLY work to protect "${animalName}" in ${locationName}.
 
-For each organization, provide:
+**CRITICAL REQUIREMENTS:**
+1. Organizations MUST actually work with "${animalName}" or closely related species (same family/order)
+2. DO NOT suggest organizations that work with unrelated species, even if they're in the same country
+3. Verify that each organization's mission/focus is relevant to "${animalName}"
+
+**Examples of WRONG matches to avoid:**
+- Tiger organizations for bird species ❌
+- Bear organizations for fish species ❌
+- Marine organizations for terrestrial species ❌
+
+**Preferred order:**
+1. Species-specific organizations (e.g., "Florida Panther Conservation")
+2. Habitat/ecosystem organizations where the species lives
+3. Taxonomic group organizations (e.g., bird conservation groups for birds)
+4. General biodiversity organizations as last resort
+
+**For each organization, provide:**
 
 1. Organization Name
 Website: [URL]
-Description: [Brief description of their work]
+Description: [How they SPECIFICALLY help ${animalName} or its habitat]
 Location: [Geographic scope]
 
-Only include organizations with verified websites. Focus on local/regional organizations first, then national ones.`,
+Only include organizations with verified websites. If you cannot find species-specific organizations, clearly state this and suggest general wildlife organizations instead.`,
           },
         ],
       }),
@@ -368,9 +390,11 @@ Only include organizations with verified websites. Focus on local/regional organ
     const resultText = result.choices[0]?.message?.content || '';
 
     console.error(`✅ FOUND ORGS for ${animalName}`);
+    console.error(`📝 RAW OPENAI RESPONSE:\n${resultText.substring(0, 800)}`);
 
     // Parse organizations from the response
     const organizations = parseOrganizationsFromText(resultText, locationName);
+    console.error(`🔍 PARSED ${organizations.length} ORGS, first org:`, JSON.stringify(organizations[0], null, 2));
     return organizations;
 
   } catch (error) {
@@ -384,69 +408,110 @@ function parseOrganizationsFromText(text: string, defaultLocation: string) {
   const lines = text.split('\n');
 
   let currentOrg: any = {};
+  let skipNextLines = false;
 
   for (const line of lines) {
     const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
+    if (!trimmedLine) {
+      skipNextLines = false;
+      continue;
+    }
+
+    // Skip standalone field labels (these are NOT organization names)
+    if (trimmedLine.match(/^(Website|Description|Location|Focus):\s*$/i) ||
+        trimmedLine.match(/^[-•]\s*(Website|Description|Location|Focus):\s*$/i)) {
+      skipNextLines = true;
+      continue;
+    }
 
     // Check if line starts with a number (new organization)
-    const numberMatch = trimmedLine.match(/^(\d+)\.\s*(.+)/);
+    const numberMatch = trimmedLine.match(/^(\d+)\.\s*\*?\*?(.+?)\*?\*?$/);
+
     if (numberMatch) {
-      // Save previous org if it exists
-      if (currentOrg.name) {
+      skipNextLines = false;
+
+      // Save previous org if it exists and is valid
+      if (currentOrg.name && currentOrg.name.trim().length > 0) {
         organizations.push({
-          name: currentOrg.name,
+          name: currentOrg.name.trim(),
           website: currentOrg.website || '',
-          description: currentOrg.description || 'Conservation organization',
-          location: currentOrg.location || defaultLocation,
         });
       }
 
-      // Start new org
-      currentOrg = { name: numberMatch[2].trim() };
+      // Start new org - extract name and remove markdown bold
+      let orgName = numberMatch[2].trim().replace(/^\*\*(.+?)\*\*$/, '$1');
+      currentOrg = { name: orgName, website: '' };
       continue;
     }
 
-    // Check for website line
-    const websiteMatch = trimmedLine.match(/^Website:\s*(.+)$/i);
-    if (websiteMatch && currentOrg.name) {
-      let website = websiteMatch[1].trim();
-      const urlMatch = website.match(/(https?:\/\/[^\s]+)/);
-      if (urlMatch) {
-        website = urlMatch[1];
-      } else if (!website.startsWith('http')) {
-        website = `https://${website}`;
+    // If we're in skip mode or don't have a current org, skip this line
+    if (skipNextLines || !currentOrg.name) continue;
+
+    // Check for website line with bullet points
+    // Format: - **Website:** ([domain](URL)) or variations
+    const bulletWebsiteMatch = trimmedLine.match(/^[-•]\s*\*?\*?Website:?\*?\*?\s*(.+)$/i);
+    if (bulletWebsiteMatch && currentOrg.name) {
+      let websiteContent = bulletWebsiteMatch[1].trim();
+
+      // Extract URL from various markdown formats:
+      // Format 1: ([text](URL)) - OpenAI's nested markdown
+      const nestedMarkdownMatch = websiteContent.match(/\(\[.*?\]\((https?:\/\/[^\)]+)\)\)/);
+      // Format 2: [text](URL) - standard markdown
+      const markdownMatch = websiteContent.match(/\[.*?\]\((https?:\/\/[^\)]+)\)/);
+      // Format 3: (URL) - parenthesized URL
+      const parenUrlMatch = websiteContent.match(/\((https?:\/\/[^\)]+)\)/);
+      // Format 4: plain URL
+      const plainUrlMatch = websiteContent.match(/(https?:\/\/[^\s\)]+)/);
+
+      let website = '';
+      if (nestedMarkdownMatch) {
+        website = nestedMarkdownMatch[1];
+      } else if (markdownMatch) {
+        website = markdownMatch[1];
+      } else if (parenUrlMatch) {
+        website = parenUrlMatch[1];
+      } else if (plainUrlMatch) {
+        website = plainUrlMatch[1];
+      } else if (websiteContent.includes('.') && !websiteContent.startsWith('http')) {
+        // Plain domain name, add https://
+        website = `https://${websiteContent}`;
       }
-      currentOrg.website = website;
+
+      if (website) {
+        // Clean up URL - remove tracking parameters
+        website = website.replace(/\?utm_source=.*$/, '');
+        currentOrg.website = website;
+      }
       continue;
     }
 
-    // Check for description line
-    const descMatch = trimmedLine.match(/^Description:\s*(.+)$/i);
-    if (descMatch && currentOrg.name) {
-      currentOrg.description = descMatch[1].trim();
-      continue;
-    }
-
-    // Check for location line
-    const locMatch = trimmedLine.match(/^Location:\s*(.+)$/i);
-    if (locMatch && currentOrg.name) {
-      currentOrg.location = locMatch[1].trim();
+    // Skip description and location lines entirely (we don't need them)
+    if (trimmedLine.match(/^[-•]\s*(?:Description|Location|Focus):/i)) {
       continue;
     }
   }
 
   // Don't forget the last organization
-  if (currentOrg.name) {
+  if (currentOrg.name && currentOrg.name.trim().length > 0) {
     organizations.push({
-      name: currentOrg.name,
+      name: currentOrg.name.trim(),
       website: currentOrg.website || '',
-      description: currentOrg.description || 'Conservation organization',
-      location: currentOrg.location || defaultLocation,
     });
   }
 
-  return organizations;
+  // Filter out invalid organizations (field labels that slipped through)
+  const validOrgs = organizations.filter(org =>
+    org.name &&
+    org.name.length > 0 &&
+    !org.name.match(/^(Website|Description|Location|Focus):?$/i)
+  );
+
+  console.error(`🔍 PARSED ${validOrgs.length} valid organizations from ${organizations.length} total`);
+  if (validOrgs.length > 0) {
+    console.error(`📋 First org:`, JSON.stringify(validOrgs[0], null, 2));
+  }
+
+  return validOrgs;
 }
 
 // Create MCP server

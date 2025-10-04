@@ -59,14 +59,14 @@ export class WildlifeDataService {
 
   /**
    * Get species list for a location using all three APIs (iNaturalist, GBIF, IUCN)
-   * FILTERS TO ONLY ENDANGERED/THREATENED SPECIES
+   * Shows ALL wildlife species (endangered and common)
    */
   async getSpeciesForLocation(location: Location, limit: number = 20): Promise<NormalizedSpecies[]> {
     console.log(`🔄 FETCHING FROM 3 APIs: iNaturalist, GBIF, and enriching with IUCN Red List`);
 
     const results = await Promise.allSettled([
-      this.getInatSpeciesForLocation(location, limit * 3), // Request more to account for filtering
-      this.getGbifSpeciesForLocation(location, limit * 3)
+      this.getInatSpeciesForLocation(location, limit * 2),
+      this.getGbifSpeciesForLocation(location, limit * 2)
     ]);
 
     const inatSpecies = results[0].status === 'fulfilled' ? results[0].value : [];
@@ -75,34 +75,14 @@ export class WildlifeDataService {
     // Merge and deduplicate species
     const combined = this.mergeSpeciesLists(inatSpecies, gbifSpecies);
 
-    // STEP 3: Enrich with authoritative IUCN Red List data
+    // Enrich with authoritative IUCN Red List data
     console.log(`🔴 ENRICHING ${combined.length} species with IUCN Red List data...`);
     const enrichedSpecies = await this.enrichWithIUCNData(combined);
 
-    // Try to prioritize endangered species if available
-    const endangeredStatuses = [
-      'Critically Endangered',
-      'Endangered',
-      'Vulnerable',
-      'Near Threatened',
-      'Conservation Dependent'
-    ];
-
-    const endangeredSpecies = enrichedSpecies.filter(species =>
-      endangeredStatuses.includes(species.conservationStatus)
-    );
-
-    console.log(`🔴 FILTERED: ${enrichedSpecies.length} total → ${endangeredSpecies.length} endangered/threatened (with IUCN enrichment)`);
-
-    // Prefer endangered species, but show all if none found
-    const speciesListToReturn = endangeredSpecies.length > 0 ? endangeredSpecies : enrichedSpecies;
-
-    if (endangeredSpecies.length === 0) {
-      console.log('⚠️ No endangered species found, showing all wildlife');
-    }
+    console.log(`🌍 TOTAL: ${enrichedSpecies.length} wildlife species found (all conservation statuses)`);
 
     // Sort by observation count to show most commonly observed species
-    return speciesListToReturn
+    return enrichedSpecies
       .sort((a, b) => b.observationCount - a.observationCount)
       .slice(0, limit);
   }
@@ -160,18 +140,23 @@ export class WildlifeDataService {
 
   /**
    * Get species data from iNaturalist
-   * Filters for threatened/endangered species using threatened=true parameter
+   * Shows all species (endangered and common)
    */
   private async getInatSpeciesForLocation(location: Location, limit: number): Promise<NormalizedSpecies[]> {
     try {
+      // Determine search radius based on location type
+      // Country/state searches use larger radius, city searches use smaller radius
+      const isCountryOrState = !location.city;
+      const radius = isCountryOrState ? '500' : '50'; // 500km for countries, 50km for cities
+
       // Get species counts for the location
       const params = new URLSearchParams({
         lat: location.lat.toString(),
         lng: location.lon.toString(),
-        radius: '50',
+        radius: radius,
         per_page: limit.toString(),
-        iconic_taxa: 'Mammalia,Aves,Reptilia,Amphibia',
-        threatened: 'true'  // CRITICAL: Filter for endangered/threatened species only
+        iconic_taxa: 'Mammalia,Aves,Reptilia,Amphibia'
+        // Removed threatened: 'true' to show ALL wildlife (not just endangered)
       });
 
       // Use absolute URL for server-side fetch
@@ -220,30 +205,33 @@ export class WildlifeDataService {
 
   /**
    * Get species data from GBIF
-   * Uses IUCN Red List category filter to get ONLY endangered/threatened species
+   * Shows all species (endangered and common)
    */
   private async getGbifSpeciesForLocation(location: Location, limit: number): Promise<NormalizedSpecies[]> {
     try {
-      // Use the new endangered occurrences endpoint
-      // This directly queries GBIF with iucnRedListCategory=CR,EN,VU,NT filter
+      // Determine search radius based on location type
+      const isCountryOrState = !location.city;
+      const radius = isCountryOrState ? '500' : '50'; // 500km for countries, 50km for cities
+
+      // Use regular occurrences endpoint to get ALL species (not just endangered)
       const params = new URLSearchParams({
         lat: location.lat.toString(),
         lng: location.lon.toString(),
-        radius: '50',
+        radius: radius,
         limit: (limit * 3).toString() // Request more to account for deduplication
       });
 
-      const response = await fetch(`${getBaseUrl()}/api/gbif/endangered-occurrences?${params.toString()}`);
+      const response = await fetch(`${getBaseUrl()}/api/gbif/occurrences?${params.toString()}`);
 
       if (!response.ok) {
-        console.error('GBIF endangered occurrences API error:', response.status);
+        console.error('GBIF occurrences API error:', response.status);
         return [];
       }
 
       const data = await response.json();
 
       if (!data.results || !Array.isArray(data.results)) {
-        console.warn('No GBIF endangered occurrences results found');
+        console.warn('No GBIF occurrences results found');
         return [];
       }
 
@@ -268,7 +256,7 @@ export class WildlifeDataService {
             taxonKey: key,
             scientificName: occurrence.scientificName || occurrence.species || 'Unknown',
             vernacularName: occurrence.vernacularName,
-            iucnStatus: occurrence.iucnRedListCategory || 'Unknown',
+            iucnStatus: occurrence.iucnRedListCategory || 'Not Evaluated',
             count: 1
           });
         }
@@ -286,7 +274,7 @@ export class WildlifeDataService {
         taxonRank: 'SPECIES'
       }));
 
-      console.log(`🔴 GBIF found ${species.length} endangered species from ${data.results.length} occurrences`);
+      console.log(`🌍 GBIF found ${species.length} species from ${data.results.length} occurrences`);
       return species.slice(0, limit);
     } catch (error) {
       console.error('Error fetching GBIF endangered species:', error);

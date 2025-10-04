@@ -124,15 +124,18 @@ class MCPClientManager {
     });
 
     // Parse response content
-    const content = response.content?.[0];
+    const content = (response.content as any)?.[0];
     if (!content) {
       throw new Error('No content in response');
     }
 
     if (content.type === 'text') {
       try {
-        return JSON.parse(content.text);
+        const parsed = JSON.parse(content.text);
+        console.log(`✅ ${serverName}.${toolName} response:`, JSON.stringify(parsed).substring(0, 500));
+        return parsed;
       } catch {
+        console.log(`⚠️ ${serverName}.${toolName} non-JSON response:`, content.text.substring(0, 200));
         return content.text;
       }
     }

@@ -129,6 +129,30 @@ export default function Home() {
           parts: [{ type: "text", text: data.response }],
         };
         setMessages((prev) => [...prev, informationMessage]);
+
+        // After information is displayed, get recommendation
+        try {
+          const recommendationResponse = await fetch("/api/recommendation", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              animal,
+              conversationContext: data.response
+            }),
+          });
+
+          if (recommendationResponse.ok) {
+            const recommendationData = await recommendationResponse.json();
+            const recommendationMessage: UIMessage = {
+              id: Date.now().toString(),
+              role: "assistant",
+              parts: [{ type: "text", text: `\n\n---\n\n${recommendationData.recommendation}` }],
+            };
+            setMessages((prev) => [...prev, recommendationMessage]);
+          }
+        } catch (error) {
+          console.error("Error generating recommendation:", error);
+        }
       }
     } catch (error) {
       console.error("Error generating information:", error);
@@ -138,10 +162,13 @@ export default function Home() {
   // Fetch animal image from Wikimedia
   const fetchAnimalImage = async (animalName: string) => {
     try {
+      // Remove "the" prefix if present
+      const cleanedAnimalName = animalName.replace(/^the\s+/i, '').trim();
+
       const response = await fetch('/api/wikimedia/animal', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ animalName }),
+        body: JSON.stringify({ animalName: cleanedAnimalName }),
       });
 
       if (response.ok) {
