@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import {
-  geocodeLocation,
-  findSpeciesByLocation,
-  getSpeciesInfo,
-  findConservationOrganizations,
   type Location,
   type Species
 } from '@/lib/conservation-tools';
@@ -21,6 +17,7 @@ import {
   createAnimalPattern,
   createAnimalDescriptivePattern
 } from '@/lib/config';
+import { speciesFetcherMCP, getMCPClientManager } from '@/lib/mcp-client';
 
 // Simple in-memory session storage (in production, use Redis or database)
 // Use global variable to persist sessions across hot reloads in development
@@ -88,9 +85,13 @@ export async function POST(request: NextRequest) {
         conservationStatus: 'Endangered'
       };
 
-      // Search for organizations
+      // Search for organizations using MCP
       console.log(`🏢 SEARCHING ORGANIZATIONS for random animal: ${random.name}`);
-      const organizations = await findConservationOrganizations(randomSpecies, fakeLocation);
+      const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+        random.name,
+        random.location,
+        process.env.OPENAI_API_KEY || ''
+      );
       console.log(`🔍 FOUND ${organizations.length} organizations for ${random.name}`);
 
       let response = `🎲 **Random Endangered Animal: ${random.name}**\n\n*${random.scientificName}* - Found in ${random.location}\n\n`;
@@ -222,9 +223,16 @@ export async function POST(request: NextRequest) {
         const result = await handleLocationDisambiguation(selectedOption);
 
         if (result.success && result.location) {
-          // Get species list from live data sources
+          // Get species list from MCP
           console.log(`📍 FETCHING SPECIES for location: ${result.location.displayName}`);
-          let species = await findSpeciesByLocation(result.location);
+          const species = await speciesFetcherMCP.findSpeciesByLocation({
+            latitude: result.location.lat,
+            longitude: result.location.lon,
+            displayName: result.location.displayName,
+            city: result.location.city,
+            state: result.location.state,
+            country: result.location.country
+          });
           console.log(`🐾 FOUND ${species.length} species for ${result.location.displayName}`);
 
           // Save location, species, and move to next step
@@ -452,7 +460,11 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           longitude: 0
         };
 
-        const organizations = await findConservationOrganizations(session.selectedAnimal, globalLocation);
+        const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+          session.selectedAnimal.commonName,
+          globalLocation.displayName,
+          process.env.OPENAI_API_KEY || ''
+        );
 
         let response = `**${message} Conservation Organizations:**\n\n`;
         if (organizations.length > 0) {
@@ -486,7 +498,11 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
           longitude: 0
         };
 
-        const organizations = await findConservationOrganizations(session.selectedAnimal, globalLocation);
+        const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+          session.selectedAnimal.commonName,
+          globalLocation.displayName,
+          process.env.OPENAI_API_KEY || ''
+        );
 
         let response = `**${session.selectedAnimal.commonName} Conservation Organizations (Worldwide):**\n\n`;
         if (organizations.length > 0) {
@@ -508,13 +524,17 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
         return NextResponse.json({ response });
       }
 
-      // User provided a location - geocode it directly
-      const geocodedLocation = await geocodeLocation(message);
+      // User provided a location - geocode it using MCP
+      const geocodedLocation = await speciesFetcherMCP.geocodeLocation(message);
 
       if (geocodedLocation) {
         console.log(`📍 LOCATION SELECTED: ${geocodedLocation.displayName} for ${session.selectedAnimal.commonName}`);
 
-        const organizations = await findConservationOrganizations(session.selectedAnimal, geocodedLocation);
+        const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+          session.selectedAnimal.commonName,
+          geocodedLocation.city || geocodedLocation.state || geocodedLocation.country || geocodedLocation.displayName,
+          process.env.OPENAI_API_KEY || ''
+        );
 
         let response = `**${session.selectedAnimal.commonName} Conservation Organizations in ${geocodedLocation.city || geocodedLocation.state || geocodedLocation.country}:**\n\n`;
         if (organizations.length > 0) {
@@ -546,9 +566,16 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
       const locationResult = await parseUserLocation(message);
 
       if (locationResult.success && locationResult.location) {
-        // Get species list from live data sources
+        // Get species list from MCP
         console.log(`📍 FETCHING SPECIES for location: ${locationResult.location.displayName}`);
-        let species = await findSpeciesByLocation(locationResult.location);
+        const species = await speciesFetcherMCP.findSpeciesByLocation({
+          latitude: locationResult.location.lat,
+          longitude: locationResult.location.lon,
+          displayName: locationResult.location.displayName,
+          city: locationResult.location.city,
+          state: locationResult.location.state,
+          country: locationResult.location.country
+        });
         console.log(`🐾 FOUND ${species.length} species for ${locationResult.location.displayName}`);
 
         // Save location, species, and move to next step
@@ -706,7 +733,11 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
 
       if (selectedAnimal && matchedSpecies) {
         console.log(`🏢 SEARCHING ORGANIZATIONS for ${selectedAnimal} in ${session.location?.displayName}`);
-        const organizations = await findConservationOrganizations(matchedSpecies, session.location);
+        const organizations = await speciesFetcherMCP.searchConservationOrganizations(
+          matchedSpecies.commonName,
+          session.location?.city || session.location?.state || session.location?.country || session.location?.displayName || 'Global',
+          process.env.OPENAI_API_KEY || ''
+        );
         console.log(`🔍 FOUND ${organizations.length} organizations for ${selectedAnimal}`);
 
         let response = `**${selectedAnimal} Conservation Organizations:**\n\n`;
@@ -766,6 +797,14 @@ Respond with ONLY one word: ANIMAL or LOCATION`,
       { error: 'Failed to generate response' },
       { status: 500 }
     );
+  } finally {
+    // Cleanup MCP connections
+    try {
+      const manager = getMCPClientManager();
+      await manager.disconnectAll();
+    } catch (cleanupError) {
+      console.error('MCP cleanup error:', cleanupError);
+    }
   }
 }
 
