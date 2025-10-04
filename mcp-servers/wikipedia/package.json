@@ -1,0 +1,16 @@
+{
+  "name": "wildlife-finder-wikipedia-mcp",
+  "version": "1.0.0",
+  "description": "Wikipedia MCP server for wildlife-finder AI agents",
+  "type": "module",
+  "main": "index.ts",
+  "bin": {
+    "wildlife-finder-wikipedia-mcp": "./index.ts"
+  },
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "keywords": ["mcp", "wikipedia", "wildlife", "conservation"],
+  "author": "",
+  "license": "MIT"
+}

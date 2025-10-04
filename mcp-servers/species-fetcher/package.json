@@ -1,0 +1,16 @@
+{
+  "name": "wildlife-finder-species-fetcher-mcp",
+  "version": "1.0.0",
+  "description": "Species Fetcher MCP server for wildlife-finder AI agents",
+  "type": "module",
+  "main": "index.ts",
+  "bin": {
+    "wildlife-finder-species-fetcher-mcp": "./index.ts"
+  },
+  "scripts": {
+    "start": "tsx index.ts"
+  },
+  "keywords": ["mcp", "species", "wildlife", "conservation", "inaturalist", "gbif"],
+  "author": "",
+  "license": "MIT"
+}

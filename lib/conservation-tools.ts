@@ -1848,3 +1848,211 @@ function filterIucnSpeciesByRegion(iucnSpecies: Species[], location: Location): 
     return true;
   });
 }
+
+// ==================== WIKIPEDIA SEARCH TOOLS ====================
+
+export interface WikipediaSearchResult {
+  title: string;
+  snippet: string;
+  pageid: number;
+}
+
+export interface WikipediaSummary {
+  title: string;
+  extract: string;
+  thumbnail?: {
+    source: string;
+    width: number;
+    height: number;
+  };
+  originalimage?: {
+    source: string;
+    width: number;
+    height: number;
+  };
+  pageUrl: string;
+}
+
+export interface WikipediaKeyFact {
+  fact: string;
+  category: string;
+}
+
+/**
+ * Search Wikipedia for articles matching a query
+ * @param query - Search query string
+ * @param limit - Maximum number of results to return (default: 5)
+ * @returns Array of search results with titles and snippets
+ */
+export async function searchWikipedia(query: string, limit: number = 5): Promise<WikipediaSearchResult[]> {
+  try {
+    console.log(`🔍 WIKIPEDIA SEARCH: "${query}"`);
+
+    const response = await fetch(
+      `https://en.wikipedia.org/w/api.php?` +
+      `action=query&` +
+      `list=search&` +
+      `srsearch=${encodeURIComponent(query)}&` +
+      `srlimit=${limit}&` +
+      `format=json&` +
+      `origin=*`,
+      {
+        headers: {
+          'User-Agent': 'Wildlife-Finder/1.0 (Educational Conservation Tool)',
+        },
+      }
+    );
+
+    const data = await response.json();
+    const results: WikipediaSearchResult[] = data.query?.search || [];
+
+    console.log(`✅ WIKIPEDIA SEARCH: Found ${results.length} results for "${query}"`);
+    return results;
+
+  } catch (error) {
+    console.error('❌ WIKIPEDIA SEARCH ERROR:', error);
+    return [];
+  }
+}
+
+/**
+ * Get a concise summary of a Wikipedia article
+ * @param title - Article title or search query
+ * @returns Summary with extract, images, and page URL
+ */
+export async function getWikipediaSummary(title: string): Promise<WikipediaSummary | null> {
+  try {
+    console.log(`📖 WIKIPEDIA SUMMARY: Fetching "${title}"`);
+
+    const response = await fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`,
+      {
+        headers: {
+          'User-Agent': 'Wildlife-Finder/1.0 (Educational Conservation Tool)',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ WIKIPEDIA SUMMARY: Article "${title}" not found (${response.status})`);
+      return null;
+    }
+
+    const data = await response.json();
+
+    const summary: WikipediaSummary = {
+      title: data.title,
+      extract: data.extract || '',
+      thumbnail: data.thumbnail,
+      originalimage: data.originalimage,
+      pageUrl: data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${encodeURIComponent(title)}`
+    };
+
+    console.log(`✅ WIKIPEDIA SUMMARY: Retrieved summary for "${summary.title}"`);
+    return summary;
+
+  } catch (error) {
+    console.error('❌ WIKIPEDIA SUMMARY ERROR:', error);
+    return null;
+  }
+}
+
+/**
+ * Get full article content from Wikipedia
+ * @param title - Article title
+ * @returns Full article HTML content
+ */
+export async function getWikipediaArticle(title: string): Promise<string | null> {
+  try {
+    console.log(`📰 WIKIPEDIA ARTICLE: Fetching "${title}"`);
+
+    const response = await fetch(
+      `https://en.wikipedia.org/api/rest_v1/page/html/${encodeURIComponent(title)}`,
+      {
+        headers: {
+          'User-Agent': 'Wildlife-Finder/1.0 (Educational Conservation Tool)',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error(`❌ WIKIPEDIA ARTICLE: Article "${title}" not found (${response.status})`);
+      return null;
+    }
+
+    const html = await response.text();
+    console.log(`✅ WIKIPEDIA ARTICLE: Retrieved article "${title}" (${html.length} chars)`);
+    return html;
+
+  } catch (error) {
+    console.error('❌ WIKIPEDIA ARTICLE ERROR:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract key facts from a Wikipedia summary using AI
+ * @param title - Article title to extract facts from
+ * @returns Array of key facts with categories
+ */
+export async function extractWikipediaKeyFacts(title: string): Promise<WikipediaKeyFact[]> {
+  try {
+    console.log(`🔑 WIKIPEDIA KEY FACTS: Extracting from "${title}"`);
+
+    // First get the summary
+    const summary = await getWikipediaSummary(title);
+    if (!summary) {
+      return [];
+    }
+
+    // Check for OpenAI API key
+    if (!process.env.OPENAI_API_KEY) {
+      console.error('OPENAI_API_KEY environment variable is not set');
+      return [];
+    }
+
+    // Use OpenAI to extract key facts
+    const { OpenAI } = await import('openai');
+    const openaiClient = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY
+    });
+
+    const completion = await openaiClient.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        {
+          role: 'system',
+          content: 'You extract key facts from Wikipedia articles about wildlife and conservation topics. Format each fact as: CATEGORY: Fact text'
+        },
+        {
+          role: 'user',
+          content: `Extract 5-7 key facts from this Wikipedia summary about "${title}":\n\n${summary.extract}\n\nFormat each as: CATEGORY: Fact\nCategories can be: Habitat, Diet, Conservation Status, Physical Characteristics, Behavior, Range, Population, etc.`
+        }
+      ],
+      temperature: 0.3,
+    });
+
+    const resultText = completion.choices[0]?.message?.content || '';
+
+    // Parse the facts
+    const facts: WikipediaKeyFact[] = [];
+    const lines = resultText.split('\n').filter(line => line.trim());
+
+    for (const line of lines) {
+      const match = line.match(/^([^:]+):\s*(.+)$/);
+      if (match) {
+        facts.push({
+          category: match[1].trim(),
+          fact: match[2].trim()
+        });
+      }
+    }
+
+    console.log(`✅ WIKIPEDIA KEY FACTS: Extracted ${facts.length} facts from "${title}"`);
+    return facts;
+
+  } catch (error) {
+    console.error('❌ WIKIPEDIA KEY FACTS ERROR:', error);
+    return [];
+  }
+}
