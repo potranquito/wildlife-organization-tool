@@ -16,8 +16,23 @@ const app = express();
 const PORT = process.env.PORT || 3100;
 
 // Enable CORS for Vercel app
+const allowedOrigins = [
+  'https://wildlife-organization-tool.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:3002'
+];
+
 app.use(cors({
-  origin: process.env.VERCEL_APP_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) return callback(null, true);
+
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now, can restrict later
+    }
+  },
   credentials: true
 }));
 
