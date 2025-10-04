@@ -946,57 +946,10 @@ Search the web for real organizations with actual websites that are currently ac
         }
       }
     } catch (webSearchError) {
-      console.log(`❌ WEBSEARCH UNAVAILABLE, falling back to AI generation: ${webSearchError}`);
+      console.log(`❌ WEBSEARCH UNAVAILABLE: ${webSearchError}`);
     }
 
-    // If WebSearch didn't provide enough results, supplement with AI generation
-    if (webSearchResults.length < 2) {
-      console.log(`WebSearch returned ${webSearchResults.length} results, supplementing with AI`);
-
-      try {
-        // Import OpenAI and generateText
-        const { openai } = await import('@ai-sdk/openai');
-        const { generateText } = await import('ai');
-
-        const result = await generateText({
-          model: openai('gpt-4o'),
-          system: `You are a conservation organization expert. Provide exactly 3-4 real conservation organizations in a simple format.
-
-Response format (use this exact structure):
-1. Organization Name
-Website: URL (if known)
-Description: Brief description
-
-2. Organization Name
-Website: URL (if known)
-Description: Brief description
-
-Include real organizations like wildlife rehabilitation centers, state wildlife agencies, and well-known conservation groups.`,
-          prompt: `Find 3-4 real conservation organizations that help with ${species.commonName} or ${speciesGroup} conservation in or near ${locationName}. Include:
-
-1. A local wildlife rehabilitation center (if any exist)
-2. The state/regional wildlife agency
-3. A national conservation organization with local presence
-4. A species-specific conservation group (if applicable)
-
-Use simple numbered format with organization name, website, and brief description.`
-        });
-
-        console.log(`AI supplement response for ${species.commonName}:`, result.text);
-
-        // Parse the AI response to extract organizations
-        const aiOrgs = extractOrganizationsFromText(result.text, location);
-        console.log(`Extracted ${aiOrgs.length} organizations from AI supplement`);
-
-        // Combine unique organizations (avoid duplicates by name)
-        const existingNames = new Set(webSearchResults.map(org => org.name.toLowerCase()));
-        const newAiOrgs = aiOrgs.filter(org => !existingNames.has(org.name.toLowerCase()));
-
-        webSearchResults = [...webSearchResults, ...newAiOrgs];
-      } catch (aiError) {
-        console.error('AI supplement failed:', aiError);
-      }
-    }
+    // No LLM knowledge base fallback - only return WebSearch results
 
     console.log(`🏢 WEBSEARCH COMPLETE: ${webSearchResults.length} total organizations found, returning top 4`);
     return webSearchResults.slice(0, 4); // Return top 4 organizations
