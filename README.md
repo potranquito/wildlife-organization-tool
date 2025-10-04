@@ -267,7 +267,8 @@ npx tsx scripts/test-mcp-servers.ts
 
 ### Accessing the Application
 - **Development**: [http://localhost:3000](http://localhost:3000)
-- **Production**: Deploy to Vercel, Netlify, or your preferred platform
+- **Live Demo**: [https://wildlife-organization-tool-9g9k13h04.vercel.app/](https://wildlife-organization-tool-9g9k13h04.vercel.app/)
+- **GitHub Repository**: [https://github.com/potranquito/wildlife-organization-tool](https://github.com/potranquito/wildlife-organization-tool)
 
 ## 📁 Project Structure
 
@@ -348,11 +349,27 @@ const status = await speciesFetcherMCP.getIUCNStatus('Puma concolor coryi', apiK
 ```
 
 ### MCP Architecture
+
+**Development Mode (stdio):**
 ```
 Next.js App → MCP Client → MCP Servers (stdio) → External APIs
 ```
 
-**Note:** MCP servers are optional development tools. The app works with direct API calls for production.
+**Production Mode (HTTP Gateway):**
+```
+Next.js App (Vercel) → HTTP Client → MCP HTTP Gateway (Railway) → MCP Servers (stdio) → External APIs
+```
+
+The production architecture uses a two-service deployment:
+1. **MCP HTTP Gateway** (Railway) - Runs `mcp-server/index.ts` to provide HTTP endpoints
+2. **Next.js App** (Vercel) - Connects to MCP Gateway via `MCP_SERVER_URL` environment variable
+
+**Deployment:**
+- **MCP Server**: Deployed on Railway at `https://wildlife-organization-tool-production.up.railway.app`
+- **Next.js App**: Deployed on Vercel with `MCP_SERVER_URL` pointing to Railway MCP server
+- **Environment Variables**:
+  - MCP Server requires: `OPENAI_API_KEY`, `IUCN_API_KEY` (optional)
+  - Next.js App requires: `OPENAI_API_KEY`, `MCP_SERVER_URL`, `VECTORIZE_TOKEN` (optional)
 
 ## 🔧 Configuration Management
 
@@ -394,19 +411,40 @@ export const CONFIG = {
 
 ## 🚀 Deployment
 
-### Vercel Deployment (Recommended)
-```bash
-# Deploy to Vercel
-npx vercel --prod
+### Two-Service Architecture (Production)
 
-# Set environment variables in Vercel dashboard
-# OPENAI_API_KEY=your_key_here
+This application requires **TWO separate services** for production deployment:
+
+#### Service 1: MCP HTTP Gateway (Railway)
+```bash
+# Deployed on Railway
+# Start command: npx tsx mcp-server/index.ts
+# Environment Variables:
+#   - OPENAI_API_KEY=your_key_here
+#   - IUCN_API_KEY=your_key_here (optional)
 ```
 
-### Alternative Platforms
-- **Netlify**: Full-stack deployment support
-- **Railway**: Container-based deployment
-- **Docker**: Containerized deployment option
+**Current Deployment**: `https://wildlife-organization-tool-production.up.railway.app`
+
+#### Service 2: Next.js Application (Vercel)
+```bash
+# Deployed on Vercel
+# Environment Variables:
+#   - OPENAI_API_KEY=your_key_here
+#   - MCP_SERVER_URL=https://wildlife-organization-tool-production.up.railway.app
+#   - VECTORIZE_TOKEN=your_token_here (optional)
+```
+
+**Current Deployment**: `https://wildlife-organization-tool-9g9k13h04.vercel.app/`
+
+### Why Two Services?
+
+The MCP (Model Context Protocol) servers require a Node.js runtime with stdio support, which isn't available in Vercel's serverless environment. The solution:
+
+1. **Railway** runs the MCP HTTP Gateway that exposes MCP tools via REST API
+2. **Vercel** runs the Next.js app and calls the MCP Gateway over HTTP
+
+See `RAILWAY_DEPLOYMENT.md` for detailed deployment instructions.
 
 ## 🤝 Contributing
 

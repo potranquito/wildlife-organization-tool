@@ -144,6 +144,24 @@ At app launch, users see three clearly structured options:
 5. **Results Display**: Structured organization information with links
 6. **Wildlife Information**: Third agent automatically retrieves detailed information 5 seconds after organizations
 
+## Production Deployment
+
+### Two-Service Architecture
+The app requires TWO separate services in production:
+
+1. **MCP HTTP Gateway (Railway)**: `https://wildlife-organization-tool-production.up.railway.app`
+   - Runs: `npx tsx mcp-server/index.ts`
+   - Exposes MCP tools via REST API
+   - Env vars: `OPENAI_API_KEY`, `IUCN_API_KEY` (optional)
+
+2. **Next.js App (Vercel)**: `https://wildlife-organization-tool-9g9k13h04.vercel.app/`
+   - Standard Next.js deployment
+   - Env vars: `OPENAI_API_KEY`, `MCP_SERVER_URL`, `VECTORIZE_TOKEN` (optional)
+   - `MCP_SERVER_URL` must point to Railway MCP server
+
+### Why Two Services?
+MCP servers require Node.js stdio support (not available in Vercel serverless). Railway runs the MCP HTTP Gateway, Vercel calls it via HTTP.
+
 ## MCP Servers (Model Context Protocol)
 
 ### Overview
