@@ -15,9 +15,10 @@ import { spawn } from 'child_process';
 const app = express();
 const PORT = process.env.PORT || 3100;
 
-// Enable CORS for Vercel app
+// Enable CORS for Vercel app and Railway
 const allowedOrigins = [
   'https://wildlife-organization-tool.vercel.app',
+  'https://wildlife-organization-tool-production.up.railway.app',
   'http://localhost:3000',
   'http://localhost:3002'
 ];
